@@ -4,7 +4,9 @@ import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, {
+    logger: ['error', 'warn', 'log', 'debug', 'verbose'],
+  });
 
   // RabbitMQ Configuration
   app.connectMicroservice<MicroserviceOptions>({
@@ -26,7 +28,10 @@ async function bootstrap() {
         brokers: ['localhost:9092'],
       },
       consumer: {
-        groupId: 'inventory-consumer',
+        groupId: 'inventory-consumer-server',
+      },
+      subscribe: {
+        fromBeginning: true,
       },
     },
   });

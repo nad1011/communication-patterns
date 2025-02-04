@@ -14,6 +14,7 @@ import { Inventory } from './inventory.entity';
       database: 'inventory_service',
       entities: [Inventory],
       synchronize: true,
+      autoLoadEntities: true,
     }),
     InventoryModule,
   ],

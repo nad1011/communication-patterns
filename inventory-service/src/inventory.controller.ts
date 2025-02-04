@@ -1,12 +1,20 @@
-import { Controller, Get, Post, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param, Logger } from '@nestjs/common';
 import { MessagePattern, EventPattern } from '@nestjs/microservices';
 import { InventoryService } from './inventory.service';
 import { CheckInventoryDto } from './dto/check-inventory.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
+import { CreateInventoryDto } from './dto/create-inventory.dto';
 
 @Controller('inventory')
 export class InventoryController {
+  private readonly logger = new Logger(InventoryController.name);
+
   constructor(private readonly inventoryService: InventoryService) {}
+
+  @Post()
+  async createInventory(@Body() createInventoryDto: CreateInventoryDto) {
+    return this.inventoryService.createInventory(createInventoryDto);
+  }
 
   // Sync One-to-One
   @Get('check/:productId')
@@ -37,12 +45,20 @@ export class InventoryController {
     productId: string;
     quantity: number;
   }) {
-    const updateDto: UpdateInventoryDto = {
-      orderId: data.orderId,
-      productId: data.productId,
-      quantity: data.quantity,
-    };
+    try {
+      await this.inventoryService.updateInventory({
+        orderId: data.orderId,
+        productId: data.productId,
+        quantity: data.quantity,
+      });
 
-    return this.inventoryService.updateInventory(updateDto);
+      return { status: 'success', orderId: data.orderId };
+    } catch (error) {
+      return {
+        status: 'failed',
+        orderId: data.orderId,
+        error: (error as Error).message,
+      };
+    }
   }
 }

@@ -8,6 +8,7 @@ import { Repository } from 'typeorm';
 import { Inventory } from './inventory.entity';
 import { CheckInventoryDto } from './dto/check-inventory.dto';
 import { UpdateInventoryDto } from './dto/update-inventory.dto';
+import { CreateInventoryDto } from './dto/create-inventory.dto';
 
 @Injectable()
 export class InventoryService {
@@ -15,6 +16,16 @@ export class InventoryService {
     @InjectRepository(Inventory)
     private readonly inventoryRepository: Repository<Inventory>,
   ) {}
+
+  async createInventory(createInventoryDto: CreateInventoryDto) {
+    const inventory = this.inventoryRepository.create({
+      productId: createInventoryDto.productId,
+      quantity: createInventoryDto.quantity,
+      isAvailable: createInventoryDto.quantity > 0,
+    });
+
+    return this.inventoryRepository.save(inventory);
+  }
 
   async checkInventory(checkInventoryDto: CheckInventoryDto) {
     const inventory = await this.inventoryRepository.findOne({
