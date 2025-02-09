@@ -115,10 +115,9 @@ export class OrderService {
     await this.orderRepository.save(order);
 
     try {
-      // Improved RabbitMQ communication with retries
-      await firstValueFrom(
+      void firstValueFrom(
         this.inventoryClient
-          .send<InventoryResponse>('check_inventory', {
+          .send<InventoryResponse>('check_update_inventory', {
             orderId: order.id,
             productId: data.productId,
             quantity: data.quantity,
@@ -133,29 +132,16 @@ export class OrderService {
               throw new RequestTimeoutException('Inventory service timeout');
             }),
           ),
-      );
-
-      await firstValueFrom(
-        this.inventoryClient
-          .send<InventoryResponse>('update_inventory', {
-            orderId: order.id,
-            productId: data.productId,
-            quantity: data.quantity,
-          })
-          .pipe(
-            timeout(5000),
-            retry(3),
-            catchError((error) => {
-              this.logger.error(
-                `Inventory update failed: ${(error as Error).message}`,
-              );
-              throw new RequestTimeoutException('Inventory update failed');
-            }),
-          ),
-      );
-
-      order.status = 'confirmed';
-      await this.orderRepository.save(order);
+      ).then((response) => {
+        if (!response.isAvailable) {
+          order.status = 'failed';
+          void this.orderRepository.save(order);
+          throw new BadRequestException('Insufficient inventory');
+        } else {
+          order.status = 'confirmed';
+          void this.orderRepository.save(order);
+        }
+      });
       return order;
     } catch (error) {
       this.logger.error(`Async order failed: ${(error as Error).message}`);
@@ -177,35 +163,7 @@ export class OrderService {
     await this.orderRepository.save(order);
 
     try {
-      // First check inventory using RPC
-      const inventoryCheck: InventoryResponse = await firstValueFrom(
-        this.inventoryClient
-          .send<InventoryResponse>('check_inventory', {
-            productId: data.productId,
-            quantity: data.quantity,
-          })
-          .pipe(
-            timeout(5000),
-            retry(3),
-            catchError((error) => {
-              this.logger.error(
-                `Inventory check failed: ${(error as Error).message}`,
-              );
-              throw new ServiceUnavailableException(
-                'Failed to check inventory',
-              );
-            }),
-          ),
-      );
-
-      if (!inventoryCheck || inventoryCheck.quantity < data.quantity) {
-        order.status = 'failed';
-        await this.orderRepository.save(order);
-        throw new BadRequestException('Insufficient inventory');
-      }
-
-      // Then emit order event
-      await firstValueFrom(
+      void firstValueFrom(
         this.kafkaClient
           .emit('order_created', {
             orderId: order.id,
@@ -222,15 +180,21 @@ export class OrderService {
               throw new ServiceUnavailableException('Failed to process order');
             }),
           ),
-      );
+      ).then(() => {
+        order.status = 'confirmed';
+        void this.orderRepository.save(order);
+      });
 
-      order.status = 'confirmed';
-      await this.orderRepository.save(order);
       return order;
     } catch (error) {
+      this.logger.error(`Event order failed: ${(error as Error).message}`);
       order.status = 'failed';
       await this.orderRepository.save(order);
       throw error;
     }
+  }
+
+  async getOrdersStatus(orderId: string) {
+    return this.orderRepository.findOneBy({ id: orderId });
   }
 }

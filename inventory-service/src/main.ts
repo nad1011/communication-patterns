@@ -1,4 +1,3 @@
-// src/main.ts
 import { NestFactory } from '@nestjs/core';
 import { Transport, MicroserviceOptions } from '@nestjs/microservices';
 import { AppModule } from './app.module';
@@ -25,10 +24,11 @@ async function bootstrap() {
     transport: Transport.KAFKA,
     options: {
       client: {
+        clientId: 'inventory-service',
         brokers: ['localhost:9092'],
       },
       consumer: {
-        groupId: 'inventory-consumer-server',
+        groupId: 'inventory-group',
       },
       subscribe: {
         fromBeginning: true,

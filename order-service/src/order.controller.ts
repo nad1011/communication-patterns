@@ -1,4 +1,4 @@
-import { Controller, Post, Body } from '@nestjs/common';
+import { Controller, Post, Body, Param, Get } from '@nestjs/common';
 import { OrderService } from './order.service';
 
 @Controller('orders')
@@ -22,5 +22,10 @@ export class OrderController {
     @Body() data: { productId: string; quantity: number },
   ) {
     return await this.orderService.createOrderEvent(data);
+  }
+
+  @Get('/status/:orderId')
+  async getOrderStatus(@Param('orderId') orderId: string) {
+    return await this.orderService.getOrdersStatus(orderId);
   }
 }

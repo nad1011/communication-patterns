@@ -28,14 +28,14 @@ export class InventoryController {
   }
 
   // Async One-to-One (RabbitMQ)
-  @MessagePattern('check_inventory')
+  @MessagePattern('check_update_inventory')
   async handleCheckInventory(data: CheckInventoryDto) {
-    return this.inventoryService.checkInventory(data);
-  }
-
-  @MessagePattern('update_inventory')
-  async handleUpdateInventory(data: UpdateInventoryDto) {
-    return this.inventoryService.updateInventory(data);
+    const result = await this.inventoryService.checkInventory(data);
+    if (result.isAvailable) {
+      this.logger.log(`Inventory check successful for ${data.productId}`);
+      return this.inventoryService.updateInventory(data);
+    }
+    return { isAvailable: false };
   }
 
   // Async One-to-Many (Kafka)
@@ -45,20 +45,22 @@ export class InventoryController {
     productId: string;
     quantity: number;
   }) {
-    try {
-      await this.inventoryService.updateInventory({
-        orderId: data.orderId,
-        productId: data.productId,
-        quantity: data.quantity,
-      });
+    const checkResult = await this.inventoryService.checkInventory({
+      productId: data.productId,
+      quantity: data.quantity,
+    });
 
-      return { status: 'success', orderId: data.orderId };
-    } catch (error) {
+    if (!checkResult.isAvailable) {
       return {
         status: 'failed',
         orderId: data.orderId,
-        error: (error as Error).message,
+        error: 'Insufficient inventory',
       };
     }
+
+    return this.inventoryService.updateInventory({
+      productId: data.productId,
+      quantity: data.quantity,
+    });
   }
 }
