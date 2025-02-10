@@ -30,12 +30,12 @@ export class InventoryController {
   // Async One-to-One (RabbitMQ)
   @MessagePattern('check_update_inventory')
   async handleCheckInventory(data: CheckInventoryDto) {
-    const result = await this.inventoryService.checkInventory(data);
-    if (result.isAvailable) {
+    const checkResult = await this.inventoryService.checkInventory(data);
+    if (checkResult.isAvailable) {
       this.logger.log(`Inventory check successful for ${data.productId}`);
       return this.inventoryService.updateInventory(data);
     }
-    return { isAvailable: false };
+    return checkResult;
   }
 
   // Async One-to-Many (Kafka)
@@ -50,17 +50,11 @@ export class InventoryController {
       quantity: data.quantity,
     });
 
-    if (!checkResult.isAvailable) {
-      return {
-        status: 'failed',
-        orderId: data.orderId,
-        error: 'Insufficient inventory',
-      };
+    if (checkResult.isAvailable) {
+      this.logger.log(`Inventory check successful for ${data.productId}`);
+      return this.inventoryService.updateInventory(data);
+    } else {
+      throw new Error('Insufficient inventory');
     }
-
-    return this.inventoryService.updateInventory({
-      productId: data.productId,
-      quantity: data.quantity,
-    });
   }
 }

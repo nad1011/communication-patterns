@@ -1,8 +1,6 @@
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
-
-// Custom metrics
 const syncLatencyTrend = new Trend('sync_latency');
 const asyncDirectLatencyTrend = new Trend('async_direct_latency');
 const asyncEventLatencyTrend = new Trend('async_event_latency');
@@ -86,26 +84,32 @@ function getTestPayload() {
   });
 }
 
-function waitForOrderConfirmation(orderId, maxAttempts = 10, interval = 1) {
-  let attempts = 0;
-  while (attempts < maxAttempts) {
-    const statusResponse = http.get(`${BASE_URL}/orders/status/${orderId}`, {
-      headers: HEADERS
+function waitForOrderConfirmationSSE(orderId) {
+  const MAX_DURATION = 5000;
+
+  return new Promise((resolve) => {
+    const response = http.get(`${BASE_URL}/orders/stream/${orderId}`, {
+      headers: {
+        'Accept': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+      },
+      timeout: MAX_DURATION,
     });
-    
-    if (statusResponse.status === 200) {
-      const order = JSON.parse(statusResponse.body);
-      if (order.status === 'confirmed') {
-        return true;
-      } else {
-        return false;
+
+    if (response.status === 200) {
+      const events = response.body.split('\n\n');
+      
+      for (const event of events) {
+        if (event.startsWith('data: ')) {
+          const data = JSON.parse(event.slice(6));
+          if (data.status === 'confirmed') return resolve(true);
+          if (data.status === 'failed') return resolve(false);
+        }
       }
     }
-    
-    sleep(interval);
-    attempts++;
-  }
-  return false;
+
+    resolve(false);
+  });
 }
 
 function handleAsyncResponse(response, startTime, latencyTrend, e2eLatencyTrend, errorRate, patternName) {
@@ -126,7 +130,7 @@ function handleAsyncResponse(response, startTime, latencyTrend, e2eLatencyTrend,
   const order = JSON.parse(response.body);
   
   // Wait for order confirmation
-  const confirmed = waitForOrderConfirmation(order.id);
+  const confirmed = waitForOrderConfirmationSSE(order.id);
   
   // Calculate total end-to-end time
   const totalDuration = new Date() - startTime;
@@ -209,7 +213,6 @@ export function asyncEventTest() {
 
 export function handleSummary(data) {
   return {
-    stdout: textSummary(data, { indent: ' ', enableColors: true }),
     'summary.json': JSON.stringify(data),
   };
 }
