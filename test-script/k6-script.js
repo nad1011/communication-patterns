@@ -3,17 +3,14 @@ import { check, sleep } from 'k6';
 import { Rate, Trend, Counter } from 'k6/metrics';
 const syncLatencyTrend = new Trend('sync_latency');
 const asyncDirectLatencyTrend = new Trend('async_direct_latency');
-const asyncEventLatencyTrend = new Trend('async_event_latency');
 
 const syncErrors = new Rate('sync_errors');
 const asyncDirectErrors = new Rate('async_direct_errors');
-const asyncEventErrors = new Rate('async_event_errors');
 
 const successfulOrders = new Counter('successful_orders');
 const failedOrders = new Counter('failed_orders');
 
 const asyncDirectE2ELatency = new Trend('async_direct_e2e_latency');
-const asyncEventE2ELatency = new Trend('async_event_e2e_latency');
 
 export const options = {
   scenarios: {
@@ -44,27 +41,12 @@ export const options = {
       exec: 'asyncDirectTest',
       startTime: '2m30s'
     },
-    async_event_test: {
-      executor: 'ramping-arrival-rate',
-      startRate: 1,
-      timeUnit: '1s',
-      preAllocatedVUs: 5,
-      maxVUs: 10,
-      stages: [
-        { duration: '30s', target: 5 },
-        { duration: '1m', target: 5 },
-        { duration: '30s', target: 0 },
-      ],
-      exec: 'asyncEventTest',
-      startTime: '5m'
-    }
   },
   thresholds: {
     http_req_duration: ['p(95)<3000', 'p(99)<5000'],
     http_req_failed: ['rate<0.01'],
     'sync_latency': ['p(95)<1000', 'avg<500'],
     'async_direct_e2e_latency': ['p(95)<2000', 'avg<1000'],
-    'async_event_e2e_latency': ['p(95)<3000', 'avg<1500'],
     'successful_orders': ['count>100'],
   },
 };
@@ -189,26 +171,6 @@ export function asyncDirectTest() {
   );
   
   sleep(1);
-}
-
-export function asyncEventTest() {
-  const startTime = new Date();
-  const payload = getTestPayload();
-  const response = http.post(`${BASE_URL}/orders/async-event`, payload, {
-    headers: HEADERS,
-    timeout: '15s'
-  });
-
-  handleAsyncResponse(
-    response,
-    startTime,
-    asyncEventLatencyTrend,
-    asyncEventE2ELatency,
-    asyncEventErrors,
-    'async-event'
-  );
-  
-  sleep(2);
 }
 
 export function handleSummary(data) {

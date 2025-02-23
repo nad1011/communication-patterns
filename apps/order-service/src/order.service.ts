@@ -151,49 +151,6 @@ export class OrderService {
     }
   }
 
-  async createOrderEvent(data: { productId: string; quantity: number }) {
-    this.validateQuantity(data.quantity);
-
-    const order = this.orderRepository.create({
-      productId: data.productId,
-      quantity: data.quantity,
-      status: 'pending',
-    });
-
-    await this.orderRepository.save(order);
-
-    try {
-      void firstValueFrom(
-        this.kafkaClient
-          .emit('order_created', {
-            orderId: order.id,
-            productId: data.productId,
-            quantity: data.quantity,
-          })
-          .pipe(
-            timeout(5000),
-            retry(3),
-            catchError((error) => {
-              this.logger.error(
-                `Failed to emit event: ${(error as Error).message}`,
-              );
-              throw new ServiceUnavailableException('Failed to process order');
-            }),
-          ),
-      ).then(() => {
-        order.status = 'confirmed';
-        void this.orderRepository.save(order);
-      });
-
-      return order;
-    } catch (error) {
-      this.logger.error(`Event order failed: ${(error as Error).message}`);
-      order.status = 'failed';
-      await this.orderRepository.save(order);
-      throw error;
-    }
-  }
-
   async getOrdersStatus(orderId: string) {
     return this.orderRepository.findOneBy({ id: orderId });
   }

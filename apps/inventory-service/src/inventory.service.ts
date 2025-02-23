@@ -5,10 +5,12 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import {
+  CheckInventoryDto,
+  UpdateInventoryDto,
+  CreateInventoryDto,
+} from '@app/common';
 import { Inventory } from './inventory.entity';
-import { CheckInventoryDto } from './dto/check-inventory.dto';
-import { UpdateInventoryDto } from './dto/update-inventory.dto';
-import { CreateInventoryDto } from './dto/create-inventory.dto';
 
 @Injectable()
 export class InventoryService {

@@ -18,13 +18,6 @@ export class OrderController {
     return await this.orderService.createOrderAsync(data);
   }
 
-  @Post('async-event')
-  async createOrderEvent(
-    @Body() data: { productId: string; quantity: number },
-  ) {
-    return await this.orderService.createOrderEvent(data);
-  }
-
   @Get('/status/:orderId')
   async getOrderStatus(@Param('orderId') orderId: string) {
     return await this.orderService.getOrdersStatus(orderId);

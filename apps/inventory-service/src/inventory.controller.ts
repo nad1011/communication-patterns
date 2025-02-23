@@ -1,9 +1,11 @@
 import { Controller, Get, Post, Body, Param, Logger } from '@nestjs/common';
-import { MessagePattern, EventPattern } from '@nestjs/microservices';
+import { MessagePattern } from '@nestjs/microservices';
+import {
+  CheckInventoryDto,
+  UpdateInventoryDto,
+  CreateInventoryDto,
+} from '@app/common';
 import { InventoryService } from './inventory.service';
-import { CheckInventoryDto } from './dto/check-inventory.dto';
-import { UpdateInventoryDto } from './dto/update-inventory.dto';
-import { CreateInventoryDto } from './dto/create-inventory.dto';
 
 @Controller('inventory')
 export class InventoryController {
@@ -36,25 +38,5 @@ export class InventoryController {
       return this.inventoryService.updateInventory(data);
     }
     return checkResult;
-  }
-
-  // Async One-to-Many (Kafka)
-  @EventPattern('order_created')
-  async handleOrderCreated(data: {
-    orderId: string;
-    productId: string;
-    quantity: number;
-  }) {
-    const checkResult = await this.inventoryService.checkInventory({
-      productId: data.productId,
-      quantity: data.quantity,
-    });
-
-    if (checkResult.isAvailable) {
-      this.logger.log(`Inventory check successful for ${data.productId}`);
-      return this.inventoryService.updateInventory(data);
-    } else {
-      throw new Error('Insufficient inventory');
-    }
   }
 }

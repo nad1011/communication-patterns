@@ -19,23 +19,6 @@ async function bootstrap() {
     },
   });
 
-  // Kafka Configuration
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.KAFKA,
-    options: {
-      client: {
-        clientId: 'inventory-service',
-        brokers: ['localhost:9092'],
-      },
-      consumer: {
-        groupId: 'inventory-group',
-      },
-      subscribe: {
-        fromBeginning: true,
-      },
-    },
-  });
-
   await app.startAllMicroservices();
   await app.listen(3001);
 }
