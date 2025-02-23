@@ -1,6 +1,13 @@
 import { Controller, Post, Body, Param, Get, Sse } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { from, Observable } from 'rxjs';
+import {
+  PAYMENT_PATTERNS,
+  PaymentResponseDto,
+  ProcessPaymentDto,
+} from '@app/common';
+import { EventPattern } from '@nestjs/microservices';
+import { Order } from './order.entity';
 
 @Controller('orders')
 export class OrderController {
@@ -20,7 +27,7 @@ export class OrderController {
 
   @Get('/status/:orderId')
   async getOrderStatus(@Param('orderId') orderId: string) {
-    return await this.orderService.getOrdersStatus(orderId);
+    return await this.orderService.getOrderById(orderId);
   }
 
   @Sse('stream/:orderId')
@@ -29,7 +36,7 @@ export class OrderController {
   ): Observable<MessageEvent> {
     return new Observable((subscriber) => {
       const interval = setInterval(() => {
-        from(this.orderService.getOrdersStatus(orderId)).subscribe({
+        from(this.orderService.getOrderById(orderId)).subscribe({
           next: (order) => {
             if (!order) return;
 
@@ -54,5 +61,28 @@ export class OrderController {
 
       return () => clearInterval(interval);
     });
+  }
+
+  @Post(':orderId/payment/sync')
+  async processPaymentSync(@Body() paymentDto: ProcessPaymentDto) {
+    return this.orderService.processPaymentSync(paymentDto);
+  }
+
+  @Post(':orderId/payment/async')
+  async processPaymentAsync(@Body() paymentDto: ProcessPaymentDto) {
+    return this.orderService.processPaymentAsync(paymentDto);
+  }
+
+  @Get('payment/status/:transactionId')
+  async getPaymentStatus(@Param('transactionId') transactionId: string) {
+    return this.orderService.getPaymentStatus(transactionId);
+  }
+
+  @EventPattern(PAYMENT_PATTERNS.PAYMENT_CALLBACK)
+  async handlePaymentStatus(order: Order, payload: PaymentResponseDto) {
+    if (payload.success) {
+      return this.orderService.updateOrderPaymentStatus(order, payload);
+    }
+    return this.orderService.handlePaymentError(order, payload.message);
   }
 }

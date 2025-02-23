@@ -22,6 +22,7 @@
     "test:e2e": "jest --config ./apps/test/jest-e2e.json",
     "start:inventory": "nest start inventory --watch",
     "start:order": "nest start order --watch",
+    "start:payment": "nest start payment --watch",
     "build:inventory": "nest build inventory",
     "build:order": "nest build order"
   },
@@ -31,6 +32,7 @@
   "dependencies": {
     "@nestjs/axios": "^4.0.0",
     "@nestjs/common": "^11.0.1",
+    "@nestjs/config": "^4.0.0",
     "@nestjs/core": "^11.0.1",
     "@nestjs/microservices": "^11.0.5",
     "@nestjs/platform-express": "^11.0.1",
@@ -40,7 +42,8 @@
     "kafkajs": "^2.2.4",
     "pg": "^8.13.1",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "uuidv4": "^6.2.13"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.2.0",

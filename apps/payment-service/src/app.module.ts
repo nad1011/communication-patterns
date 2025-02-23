@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { InventoryModule } from './inventory.module';
+import { PaymentModule } from './payment.module';
 import { DatabaseModule } from '@app/common';
 import { ConfigModule } from '@nestjs/config';
 
@@ -7,10 +7,10 @@ import { ConfigModule } from '@nestjs/config';
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: './apps/inventory-service/.env',
+      envFilePath: './apps/payment-service/.env',
     }),
     DatabaseModule,
-    InventoryModule,
+    PaymentModule,
   ],
 })
 export class AppModule {}

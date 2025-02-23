@@ -1,4 +1,3 @@
-// apps/order-service/src/order.entity.ts
 import {
   Entity,
   Column,
@@ -8,27 +7,27 @@ import {
 } from 'typeorm';
 
 @Entity()
-export class Order {
+export class Payment {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
   @Column()
-  productId: string;
+  orderId: string;
 
   @Column()
   quantity: number;
 
+  @Column({ default: 'USD' })
+  currency: string;
+
   @Column()
-  status: string; // pending, payment_pending, paid, payment_failed, completed
+  status: string; // pending, processing, completed, failed
 
   @Column({ nullable: true })
-  paymentId: string;
+  transactionId: string;
 
   @Column({ nullable: true })
-  paymentStatus: string;
-
-  @Column({ nullable: true })
-  paymentError: string;
+  errorMessage: string;
 
   @CreateDateColumn()
   createdAt: Date;

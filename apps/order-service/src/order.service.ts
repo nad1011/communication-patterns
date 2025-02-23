@@ -13,6 +13,11 @@ import { Order } from './order.entity';
 import { HttpService } from '@nestjs/axios';
 import { ClientProxy } from '@nestjs/microservices';
 import { InventoryResponse } from './types';
+import {
+  ProcessPaymentDto,
+  PaymentResponseDto,
+  PAYMENT_PATTERNS,
+} from '@app/common';
 
 const HTTP_CONFIG = {
   timeout: 5000,
@@ -30,13 +35,25 @@ export class OrderService {
     private orderRepository: Repository<Order>,
     private readonly httpService: HttpService,
     @Inject('INVENTORY_SERVICE') private inventoryClient: ClientProxy,
-    @Inject('KAFKA_SERVICE') private kafkaClient: ClientProxy,
+    @Inject('PAYMENT_SERVICE') private paymentClient: ClientProxy,
   ) {}
 
   private validateQuantity(quantity: number) {
     if (!Number.isInteger(quantity) || quantity <= 0) {
       throw new BadRequestException('Quantity must be a positive integer');
     }
+  }
+
+  async getOrderById(orderId: string): Promise<Order> {
+    const order = await this.orderRepository.findOne({
+      where: { id: orderId },
+    });
+
+    if (!order) {
+      throw new Error(`Order ${orderId} not found`);
+    }
+
+    return order;
   }
 
   async createOrderSync(data: { productId: string; quantity: number }) {
@@ -125,9 +142,9 @@ export class OrderService {
           .pipe(
             timeout(5000),
             retry(3),
-            catchError((error) => {
+            catchError((error: Error) => {
               this.logger.error(
-                `RabbitMQ communication failed: ${(error as Error).message}`,
+                `RabbitMQ communication failed: ${error.message}`,
               );
               throw new RequestTimeoutException('Inventory service timeout');
             }),
@@ -151,7 +168,87 @@ export class OrderService {
     }
   }
 
-  async getOrdersStatus(orderId: string) {
-    return this.orderRepository.findOneBy({ id: orderId });
+  async processPaymentSync(paymentDto: ProcessPaymentDto) {
+    const order = await this.getOrderById(paymentDto.orderId);
+    order.status = 'payment_pending';
+    await this.orderRepository.save(order);
+
+    // try {
+    const response = await firstValueFrom(
+      this.httpService
+        .post<PaymentResponseDto>(
+          'http://localhost:3002/payment/process',
+          {
+            ...paymentDto,
+          },
+          { ...HTTP_CONFIG },
+        )
+        .pipe(
+          timeout(5000),
+          retry(3),
+          catchError((error: Error) => {
+            this.logger.error(`Payment processing failed: ${error.message}`);
+            throw error;
+          }),
+        ),
+    );
+
+    return response.data;
+  }
+
+  async processPaymentAsync(paymentDto: ProcessPaymentDto) {
+    const order = await this.getOrderById(paymentDto.orderId);
+    order.status = 'payment_pending';
+    await this.orderRepository.save(order);
+
+    this.paymentClient.emit(PAYMENT_PATTERNS.PROCESS_PAYMENT, {
+      ...paymentDto,
+    });
+
+    return {
+      orderId: order.id,
+      status: 'payment_pending',
+      message: 'Payment processing initiated',
+    };
+  }
+
+  async getPaymentStatus(transactionId: string) {
+    const response = await firstValueFrom(
+      this.httpService
+        .get(`http://localhost:3002/payment/${transactionId}`, {
+          ...HTTP_CONFIG,
+        })
+        .pipe(
+          timeout(5000),
+          retry(3),
+          catchError((error: Error) => {
+            this.logger.error(`Get payment status failed: ${error.message}`);
+            throw error;
+          }),
+        ),
+    );
+
+    return response;
+  }
+
+  async updateOrderPaymentStatus(
+    order: Order,
+    paymentResponse: PaymentResponseDto,
+  ) {
+    order.status = paymentResponse.success ? 'paid' : 'payment_failed';
+    order.paymentId = paymentResponse.paymentId;
+    order.paymentStatus = paymentResponse.status;
+
+    if (!paymentResponse.success) {
+      order.paymentError = paymentResponse.message;
+    }
+
+    await this.orderRepository.save(order);
+  }
+
+  async handlePaymentError(order: Order, error: string) {
+    order.status = 'payment_failed';
+    order.paymentError = error || 'Payment processing failed';
+    await this.orderRepository.save(order);
   }
 }
