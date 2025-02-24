@@ -29,6 +29,7 @@ const HTTP_CONFIG = {
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
   private readonly inventoryBaseUrl = 'http://localhost:3001';
+  private readonly paymentBaseUrl = 'http://localhost:3002';
 
   constructor(
     @InjectRepository(Order)
@@ -88,9 +89,6 @@ export class OrderService {
           status: 'created',
         });
 
-        await manager.save(Order, order);
-
-        // Update inventory with retries
         try {
           await firstValueFrom(
             this.httpService
@@ -105,12 +103,15 @@ export class OrderService {
               )
               .pipe(retry(3)),
           );
+          order.status = 'confirmed';
         } catch (error) {
+          order.status = 'failed';
           this.logger.error(
             `Inventory update failed: ${(error as Error).message}`,
           );
           throw new ServiceUnavailableException('Failed to update inventory');
         }
+        await manager.save(Order, order);
 
         return order;
       });
@@ -173,11 +174,10 @@ export class OrderService {
     order.status = 'payment_pending';
     await this.orderRepository.save(order);
 
-    // try {
     const response = await firstValueFrom(
       this.httpService
         .post<PaymentResponseDto>(
-          'http://localhost:3002/payment/process',
+          `${this.paymentBaseUrl}/payment/process`,
           {
             ...paymentDto,
           },
@@ -215,7 +215,7 @@ export class OrderService {
   async getPaymentStatus(transactionId: string) {
     const response = await firstValueFrom(
       this.httpService
-        .get(`http://localhost:3002/payment/${transactionId}`, {
+        .get(`${this.paymentBaseUrl}/payment/${transactionId}`, {
           ...HTTP_CONFIG,
         })
         .pipe(

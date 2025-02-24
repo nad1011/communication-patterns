@@ -47,10 +47,9 @@ export class PaymentService {
         status: payment.status,
       };
 
-      // Emit callback event to update order status
       this.orderClient.emit(PAYMENT_PATTERNS.PAYMENT_CALLBACK, {
         orderId: payment.orderId,
-        payload: { ...response },
+        payload: response,
       });
 
       return response;
@@ -84,10 +83,8 @@ export class PaymentService {
       'Processing payment with external gateway for payment: ',
       payment.id,
     );
-    // Simulate external payment gateway processing
     await new Promise((resolve) => setTimeout(resolve, 2000));
 
-    // Simulate 90% success rate
     const success = Math.random() < 0.9;
 
     const transactionId = uuid();

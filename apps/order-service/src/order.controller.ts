@@ -7,7 +7,6 @@ import {
   ProcessPaymentDto,
 } from '@app/common';
 import { EventPattern } from '@nestjs/microservices';
-import { Order } from './order.entity';
 
 @Controller('orders')
 export class OrderController {
@@ -63,12 +62,12 @@ export class OrderController {
     });
   }
 
-  @Post(':orderId/payment/sync')
+  @Post('/payment/sync')
   async processPaymentSync(@Body() paymentDto: ProcessPaymentDto) {
     return this.orderService.processPaymentSync(paymentDto);
   }
 
-  @Post(':orderId/payment/async')
+  @Post('/payment/async')
   async processPaymentAsync(@Body() paymentDto: ProcessPaymentDto) {
     return this.orderService.processPaymentAsync(paymentDto);
   }
@@ -79,10 +78,14 @@ export class OrderController {
   }
 
   @EventPattern(PAYMENT_PATTERNS.PAYMENT_CALLBACK)
-  async handlePaymentStatus(order: Order, payload: PaymentResponseDto) {
-    if (payload.success) {
-      return this.orderService.updateOrderPaymentStatus(order, payload);
+  async handlePaymentStatus(data: {
+    orderId: string;
+    payload: PaymentResponseDto;
+  }) {
+    const order = await this.orderService.getOrderById(data.orderId);
+    if (data.payload.success) {
+      return this.orderService.updateOrderPaymentStatus(order, data.payload);
     }
-    return this.orderService.handlePaymentError(order, payload.message);
+    return this.orderService.handlePaymentError(order, data.payload.message);
   }
 }
