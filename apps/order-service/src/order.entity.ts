@@ -15,6 +15,9 @@ export class Order {
   @Column()
   productId: string;
 
+  @Column({ nullable: true })
+  customerId: string;
+
   @Column()
   quantity: number;
 

@@ -23,6 +23,9 @@
     "start:inventory": "nest start inventory --watch",
     "start:order": "nest start order --watch",
     "start:payment": "nest start payment --watch",
+    "start:analytics": "nest start analytics --watch",
+    "start:notification": "nest start notification --watch",
+    "start:email": "nest start email --watch",
     "build:inventory": "nest build inventory",
     "build:order": "nest build order"
   },

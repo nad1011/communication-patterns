@@ -88,4 +88,22 @@ export class OrderController {
     }
     return this.orderService.handlePaymentError(order, data.payload.message);
   }
+
+  @Post(':orderId/notify-sync')
+  async notifySync(@Param('orderId') orderId: string) {
+    const order = await this.orderService.getOrderById(orderId);
+    if (!order) {
+      throw new Error('Order not found');
+    }
+    return this.orderService.notifyServicesSync(order);
+  }
+
+  @Post(':orderId/notify-async')
+  async notifyAsync(@Param('orderId') orderId: string) {
+    const order = await this.orderService.getOrderById(orderId);
+    if (!order) {
+      throw new Error('Order not found');
+    }
+    return this.orderService.notifyServicesAsync(order);
+  }
 }

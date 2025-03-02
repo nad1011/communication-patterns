@@ -30,6 +30,9 @@ export class OrderService {
   private readonly logger = new Logger(OrderService.name);
   private readonly inventoryBaseUrl = 'http://localhost:3001';
   private readonly paymentBaseUrl = 'http://localhost:3002';
+  private readonly notificationBaseUrl = 'http://localhost:3004';
+  private readonly emailBaseUrl = 'http://localhost:3003';
+  private readonly analyticsBaseUrl = 'http://localhost:3002';
 
   constructor(
     @InjectRepository(Order)
@@ -37,6 +40,7 @@ export class OrderService {
     private readonly httpService: HttpService,
     @Inject('INVENTORY_SERVICE') private inventoryClient: ClientProxy,
     @Inject('PAYMENT_SERVICE') private paymentClient: ClientProxy,
+    @Inject('KAFKA_SERVICE') private kafkaClient: ClientProxy,
   ) {}
 
   private validateQuantity(quantity: number) {
@@ -250,5 +254,134 @@ export class OrderService {
     order.status = 'payment_failed';
     order.paymentError = error || 'Payment processing failed';
     await this.orderRepository.save(order);
+  }
+
+  async notifyServicesSync(order: Order) {
+    const startTime = Date.now();
+    const results = {
+      notification: { success: false, time: 0, error: null },
+      email: { success: false, time: 0, error: null },
+      analytics: { success: false, time: 0, error: null },
+      totalTime: 0,
+    };
+
+    try {
+      // 1. Notify push notification service
+      const notificationStart = Date.now();
+      const notificationResponse = await firstValueFrom(
+        this.httpService
+          .post(`${this.notificationBaseUrl}/notifications`, {
+            orderId: order.id,
+            customerId: order.customerId,
+            message: `Your order #${order.id} has been confirmed`,
+            type: 'ORDER_CONFIRMATION',
+          })
+          .pipe(
+            timeout(5000),
+            catchError((error: Error) => {
+              this.logger.error(`Notification service error: ${error.message}`);
+              throw error;
+            }),
+          ),
+      );
+      results.notification.success = notificationResponse.status === 201;
+      results.notification.time = Date.now() - notificationStart;
+    } catch (error) {
+      results.notification.error = (error as Error).message;
+    }
+
+    try {
+      // 2. Notify email service
+      const emailStart = Date.now();
+      const emailResponse = await firstValueFrom(
+        this.httpService
+          .post(`${this.emailBaseUrl}/emails`, {
+            orderId: order.id,
+            customerId: order.customerId,
+            subject: `Order Confirmation: #${order.id}`,
+            body: `Thank you for your order #${order.id}. Your order has been confirmed.`,
+          })
+          .pipe(
+            timeout(5000),
+            catchError((error: Error) => {
+              this.logger.error(`Email service error: ${error.message}`);
+              throw error;
+            }),
+          ),
+      );
+      results.email.success = emailResponse.status === 201;
+      results.email.time = Date.now() - emailStart;
+    } catch (error) {
+      results.email.error = (error as Error).message;
+    }
+
+    try {
+      // 3. Update analytics service
+      const analyticsStart = Date.now();
+      const analyticsResponse = await firstValueFrom(
+        this.httpService
+          .post(`${this.analyticsBaseUrl}/events`, {
+            orderId: order.id,
+            customerId: order.customerId,
+            event: 'ORDER_CONFIRMED',
+            metadata: {
+              productId: order.productId,
+              quantity: order.quantity,
+            },
+          })
+          .pipe(
+            timeout(5000),
+            catchError((error: Error) => {
+              this.logger.error(`Analytics service error: ${error.message}`);
+              throw error;
+            }),
+          ),
+      );
+      results.analytics.success = analyticsResponse.status === 201;
+      results.analytics.time = Date.now() - analyticsStart;
+    } catch (error) {
+      results.analytics.error = (error as Error).message;
+    }
+
+    results.totalTime = Date.now() - startTime;
+    return results;
+  }
+
+  // Asynchronous approach - Publish event once
+  async notifyServicesAsync(order: Order) {
+    const startTime = Date.now();
+
+    try {
+      // Publish single event to Kafka
+      await firstValueFrom(
+        this.kafkaClient
+          .emit('order_confirmed', {
+            orderId: order.id,
+            customerId: order.customerId,
+            status: order.status,
+            productId: order.productId,
+            quantity: order.quantity,
+            timestamp: new Date().toISOString(),
+          })
+          .pipe(
+            timeout(5000),
+            catchError((error: Error) => {
+              this.logger.error(`Failed to emit event: ${error.message}`);
+              throw error;
+            }),
+          ),
+      );
+
+      return {
+        success: true,
+        time: Date.now() - startTime,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        time: Date.now() - startTime,
+        error: (error as Error).message,
+      };
+    }
   }
 }
