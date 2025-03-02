@@ -83,7 +83,7 @@ export class PaymentService {
       'Processing payment with external gateway for payment: ',
       payment.id,
     );
-    await new Promise((resolve) => setTimeout(resolve, 2000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
     const success = Math.random() < 0.9;
 
