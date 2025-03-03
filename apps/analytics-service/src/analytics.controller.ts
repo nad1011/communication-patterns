@@ -1,6 +1,6 @@
-import { Controller, Post, Body, Logger } from '@nestjs/common';
+import { Controller, Post, Body, Logger, Get } from '@nestjs/common';
 import { AnalyticsService } from './analytics.service';
-import { EventPattern } from '@nestjs/microservices';
+import { EventPattern, MessagePattern, Payload } from '@nestjs/microservices';
 
 @Controller('events')
 export class AnalyticsController {
@@ -50,5 +50,33 @@ export class AnalyticsController {
         orderDate: data.timestamp,
       },
     });
+  }
+
+  @Get('stats')
+  getStats() {
+    return this.analyticsService.getStats();
+  }
+
+  // RabbitMQ Message Pattern Handler (One-to-One)
+  @MessagePattern('user_search')
+  handleUserSearch(@Payload() data: any) {
+    this.logger.log(`[RabbitMQ] Received user search: ${JSON.stringify(data)}`);
+    return this.analyticsService.processUserSearch(data);
+  }
+
+  // Kafka Event Pattern Handler (One-to-Many)
+  @EventPattern('user_activity')
+  handleUserActivity(@Payload() data: any) {
+    this.logger.log(`[Kafka] Received user activity: ${JSON.stringify(data)}`);
+
+    // Log all activities for analytics but process search specifically
+    this.analyticsService.logActivity(data.value);
+
+    // Process search events
+    if (data.value.action === 'search') {
+      return this.analyticsService.processUserSearch(data.value);
+    }
+
+    return null;
   }
 }
