@@ -1,0 +1,93 @@
+services:
+  order-service:
+    build:
+      context: ..
+      dockerfile: apps/order-service/Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=test
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+      - DATABASE_NAME=microservices_test
+      - RABBITMQ_HOST=amqp://rabbitmq
+      - RABBITMQ_PORT=5672
+      - KAFKA_BROKERS=kafka:9092
+      - INVENTORY_HOST=inventory-service
+      - INVENTORY_PORT=3001
+    depends_on:
+      - postgres
+      - rabbitmq
+      - kafka
+    networks:
+      - microservices-test-network
+
+  inventory-service:
+    build:
+      context: ..
+      dockerfile: apps/inventory-service/Dockerfile
+    ports:
+      - "3001:3001"
+    environment:
+      - NODE_ENV=test
+      - DATABASE_HOST=postgres
+      - DATABASE_PORT=5432
+      - DATABASE_USER=postgres
+      - DATABASE_PASSWORD=postgres
+      - DATABASE_NAME=microservices_test
+      - RABBITMQ_HOST=amqp://rabbitmq
+      - RABBITMQ_PORT=5672
+    depends_on:
+      - postgres
+      - rabbitmq
+    networks:
+      - microservices-test-network
+
+  postgres:
+    image: postgres:14-alpine
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=microservices_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    networks:
+      - microservices-test-network
+
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - microservices-test-network
+
+  kafka:
+    image: wurstmeister/kafka:latest
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_ADVERTISED_HOST_NAME: kafka
+      KAFKA_ADVERTISED_PORT: 9092
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_CREATE_TOPICS: "order_created:1:1,order_confirmed:1:1"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    depends_on:
+      - zookeeper
+    networks:
+      - microservices-test-network
+
+  zookeeper:
+    image: wurstmeister/zookeeper
+    ports:
+      - "2181:2181"
+    networks:
+      - microservices-test-network
+
+networks:
+  microservices-test-network:
+    driver: bridge

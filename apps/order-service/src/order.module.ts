@@ -18,7 +18,7 @@ import { Order } from './order.entity';
         name: 'INVENTORY_SERVICE',
         transport: Transport.RMQ,
         options: {
-          urls: ['amqp://localhost:5672'],
+          urls: [`${process.env.RABBITMQ_HOST}:${process.env.RABBITMQ_PORT}`],
           queue: 'inventory_queue',
           queueOptions: {
             durable: true,
@@ -31,10 +31,14 @@ import { Order } from './order.entity';
         options: {
           client: {
             clientId: 'order',
-            brokers: ['localhost:9092'],
+            brokers: [process.env.KAFKA_BROKERS],
           },
           consumer: {
             groupId: 'order-consumer',
+            allowAutoTopicCreation: true,
+          },
+          producer: {
+            allowAutoTopicCreation: true,
           },
         },
       },
@@ -42,7 +46,7 @@ import { Order } from './order.entity';
         name: 'PAYMENT_SERVICE',
         transport: Transport.RMQ,
         options: {
-          urls: ['amqp://localhost:5672'],
+          urls: [`${process.env.RABBITMQ_HOST}:${process.env.RABBITMQ_PORT}`],
           queue: 'payment_queue',
           queueOptions: {
             durable: true,

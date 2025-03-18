@@ -26,6 +26,8 @@
     "start:analytics": "nest start analytics --watch",
     "start:notification": "nest start notification --watch",
     "start:email": "nest start email --watch",
+    "start:activity": "nest start activity --watch",
+    "start:fraud": "nest start fraud --watch",
     "build:inventory": "nest build inventory",
     "build:order": "nest build order"
   },

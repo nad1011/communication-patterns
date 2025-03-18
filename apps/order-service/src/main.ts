@@ -9,7 +9,7 @@ async function bootstrap() {
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
     options: {
-      urls: ['amqp://localhost:5672'],
+      urls: [`${process.env.RABBITMQ_HOST}:${process.env.RABBITMQ_PORT}`],
       queue: 'inventory_queue',
       queueOptions: {
         durable: true,
@@ -20,7 +20,7 @@ async function bootstrap() {
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
     options: {
-      urls: ['amqp://localhost:5672'],
+      urls: [`${process.env.RABBITMQ_HOST}:${process.env.RABBITMQ_PORT}`],
       queue: 'order_queue', // Queue để nhận callback từ payment service
       queueOptions: {
         durable: true,
@@ -34,10 +34,14 @@ async function bootstrap() {
     options: {
       client: {
         clientId: 'order-service',
-        brokers: ['localhost:9092'],
+        brokers: [process.env.KAFKA_BROKERS],
       },
       consumer: {
-        groupId: 'order-group',
+        groupId: 'order-consumer',
+        allowAutoTopicCreation: true,
+      },
+      producer: {
+        allowAutoTopicCreation: true,
       },
     },
   });

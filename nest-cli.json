@@ -63,6 +63,24 @@
         "tsConfigPath": "apps/email-service/tsconfig.json"
       }
     },
+    "activity": {
+      "type": "application",
+      "root": "apps/activity-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/activity-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/activity-service/tsconfig.json"
+      }
+    },
+    "fraud": {
+      "type": "application",
+      "root": "apps/fraud-service",
+      "entryFile": "main",
+      "sourceRoot": "apps/fraud-service/src",
+      "compilerOptions": {
+        "tsConfigPath": "apps/fraud-service/tsconfig.json"
+      }
+    },
     "common": {
       "type": "library",
       "root": "libs/common",

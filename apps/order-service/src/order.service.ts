@@ -28,11 +28,11 @@ const HTTP_CONFIG = {
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
-  private readonly inventoryBaseUrl = 'http://localhost:3001';
-  private readonly paymentBaseUrl = 'http://localhost:3002';
-  private readonly notificationBaseUrl = 'http://localhost:3004';
-  private readonly emailBaseUrl = 'http://localhost:3003';
-  private readonly analyticsBaseUrl = 'http://localhost:3002';
+  private readonly inventoryBaseUrl = `http://${process.env.INVENTORY_HOST || 'inventory-service'}:${process.env.INVENTORY_PORT || 3001}`;
+  private readonly paymentBaseUrl = `http://${process.env.PAYMENT_HOST || 'localhost'}:${process.env.PAYMENT_PORT || 3002}`;
+  private readonly notificationBaseUrl = `http://${process.env.NOTIFICATION_HOST || 'localhost'}:${process.env.NOTIFICATION_PORT || 3004}`;
+  private readonly emailBaseUrl = `http://${process.env.EMAIL_HOST || 'localhost'}:${process.env.EMAIL_PORT || 3003}`;
+  private readonly analyticsBaseUrl = `http://${process.env.ANALYTICS_HOST || 'localhost'}:${process.env.ANALYTICS_PORT || 3002}`;
 
   constructor(
     @InjectRepository(Order)
