@@ -121,13 +121,11 @@ export class OrderService {
       });
     } catch (error) {
       this.logger.error(`Order creation failed: ${(error as Error).message}`);
-      throw error;
     }
   }
 
   async createOrderAsync(data: { productId: string; quantity: number }) {
     this.validateQuantity(data.quantity);
-
     const order = this.orderRepository.create({
       productId: data.productId,
       quantity: data.quantity,
@@ -140,17 +138,14 @@ export class OrderService {
       void firstValueFrom(
         this.inventoryClient
           .send<InventoryResponse>('check_update_inventory', {
-            orderId: order.id,
             productId: data.productId,
             quantity: data.quantity,
           })
           .pipe(
             timeout(5000),
             retry(3),
-            catchError((error: Error) => {
-              this.logger.error(
-                `RabbitMQ communication failed: ${error.message}`,
-              );
+            catchError((error) => {
+              this.logger.error(`RabbitMQ communication failed: ${error}`);
               throw new RequestTimeoutException('Inventory service timeout');
             }),
           ),
@@ -166,10 +161,10 @@ export class OrderService {
       });
       return order;
     } catch (error) {
-      this.logger.error(`Async order failed: ${(error as Error).message}`);
+      this.logger.error(`Async order failed: ${error}`);
       order.status = 'failed';
       await this.orderRepository.save(order);
-      throw error;
+      return order;
     }
   }
 
@@ -190,8 +185,8 @@ export class OrderService {
         .pipe(
           timeout(5000),
           retry(3),
-          catchError((error: Error) => {
-            this.logger.error(`Payment processing failed: ${error.message}`);
+          catchError((error) => {
+            this.logger.error(`Payment processing failed: ${error}`);
             throw error;
           }),
         ),
@@ -225,8 +220,8 @@ export class OrderService {
         .pipe(
           timeout(5000),
           retry(3),
-          catchError((error: Error) => {
-            this.logger.error(`Get payment status failed: ${error.message}`);
+          catchError((error) => {
+            this.logger.error(`Get payment status failed: ${error}`);
             throw error;
           }),
         ),
@@ -278,8 +273,8 @@ export class OrderService {
           })
           .pipe(
             timeout(5000),
-            catchError((error: Error) => {
-              this.logger.error(`Notification service error: ${error.message}`);
+            catchError((error) => {
+              this.logger.error(`Notification service error: ${error}`);
               throw error;
             }),
           ),
@@ -287,7 +282,7 @@ export class OrderService {
       results.notification.success = notificationResponse.status === 201;
       results.notification.time = Date.now() - notificationStart;
     } catch (error) {
-      results.notification.error = (error as Error).message;
+      results.notification.error = error as string;
     }
 
     try {
@@ -312,7 +307,7 @@ export class OrderService {
       results.email.success = emailResponse.status === 201;
       results.email.time = Date.now() - emailStart;
     } catch (error) {
-      results.email.error = (error as Error).message;
+      results.email.error = error as string;
     }
 
     try {
@@ -331,8 +326,8 @@ export class OrderService {
           })
           .pipe(
             timeout(5000),
-            catchError((error: Error) => {
-              this.logger.error(`Analytics service error: ${error.message}`);
+            catchError((error) => {
+              this.logger.error(`Analytics service error: ${error}`);
               throw error;
             }),
           ),
@@ -340,7 +335,7 @@ export class OrderService {
       results.analytics.success = analyticsResponse.status === 201;
       results.analytics.time = Date.now() - analyticsStart;
     } catch (error) {
-      results.analytics.error = (error as Error).message;
+      results.analytics.error = error as string;
     }
 
     results.totalTime = Date.now() - startTime;
@@ -365,8 +360,8 @@ export class OrderService {
           })
           .pipe(
             timeout(5000),
-            catchError((error: Error) => {
-              this.logger.error(`Failed to emit event: ${error.message}`);
+            catchError((error) => {
+              this.logger.error(`Failed to emit event: ${error}`);
               throw error;
             }),
           ),
@@ -380,7 +375,7 @@ export class OrderService {
       return {
         success: false,
         time: Date.now() - startTime,
-        error: (error as Error).message,
+        error: error as string,
       };
     }
   }
