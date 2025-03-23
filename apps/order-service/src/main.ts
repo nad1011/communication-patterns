@@ -6,16 +6,18 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // RabbitMQ Configuration
-  app.connectMicroservice<MicroserviceOptions>({
-    transport: Transport.RMQ,
-    options: {
-      urls: [`${process.env.RABBITMQ_HOST}:${process.env.RABBITMQ_PORT}`],
-      queue: 'inventory_queue',
-      queueOptions: {
-        durable: true,
-      },
-    },
-  });
+  // app.connectMicroservice<MicroserviceOptions>({
+  //   transport: Transport.RMQ,
+  //   options: {
+  //     urls: [`${process.env.RABBITMQ_HOST}:${process.env.RABBITMQ_PORT}`],
+  //     queue: 'inventory_queue',
+  //     queueOptions: {
+  //       durable: true,
+  //     },
+  //     prefetchCount: 20,
+  //     noAck: false,
+  //   },
+  // });
 
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
@@ -25,6 +27,8 @@ async function bootstrap() {
       queueOptions: {
         durable: true,
       },
+      prefetchCount: 20,
+      noAck: false,
     },
   });
 
@@ -51,4 +55,7 @@ async function bootstrap() {
 }
 bootstrap().catch((error) => {
   console.error('Error during bootstrap:', error);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });

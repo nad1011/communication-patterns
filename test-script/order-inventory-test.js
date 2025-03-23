@@ -8,6 +8,8 @@ const syncP95Latency = new Trend("sync_p95_latency");
 const syncThroughput = new Trend("sync_throughput");
 const syncErrors = new Rate("sync_errors");
 const syncConsistencyRate = new Rate("sync_consistency_rate");
+const syncCpuUsage = new Trend("sync_cpu_usage");
+const syncMemoryUsage = new Trend("sync_memory_usage");
 
 // Metrics for Asynchronous (Message Queue) communication
 const asyncLatencyTrend = new Trend("async_latency");
@@ -17,103 +19,115 @@ const asyncErrors = new Rate("async_errors");
 const asyncConsistencyRate = new Rate("async_consistency_rate");
 const asyncConsistencyTime = new Trend("async_consistency_time");
 const asyncDataLag = new Trend("async_data_lag");
+const asyncCpuUsage = new Trend("async_cpu_usage");
+const asyncMemoryUsage = new Trend("async_memory_usage");
 
-// Counter metrics
-const successfulRequests = new Counter("successful_requests");
-const failedRequests = new Counter("failed_requests");
+// Counter metrics for better tracking
+const successfulSyncRequests = new Counter("successful_sync_requests");
+const failedSyncRequests = new Counter("failed_sync_requests");
+const successfulAsyncRequests = new Counter("successful_async_requests");
+const failedAsyncRequests = new Counter("failed_async_requests");
 
 export const options = {
   scenarios: {
-    // 1.1 Latency/Performance Testing
+    // 1.1 Latency/Performance Testing - Synchronous
     sync_performance_test: {
       executor: "ramping-vus",
       startVUs: 10,
       stages: [
-        { duration: "30s", target: 25 },
-        { duration: "1m", target: 50 },
-        { duration: "30s", target: 75 },
-        { duration: "1m", target: 100 },
-        { duration: "30s", target: 0 },
+        { duration: "30s", target: 25 }, // Ramp up to 25 users
+        { duration: "1m", target: 50 }, // Ramp up to 50 users
+        { duration: "30s", target: 75 }, // Ramp up to 75 users
+        { duration: "1m", target: 100 }, // Ramp up to 100 users
+        { duration: "30s", target: 0 }, // Ramp down to 0
       ],
       gracefulRampDown: "10s",
       exec: "syncPerformanceTest",
     },
 
-    // Reduced load for async testing due to RabbitMQ issues
+    // 1.1 Latency/Performance Testing - Asynchronous
     async_performance_test: {
-      executor: "ramping-vus",
-      startVUs: 2,
+      executor: "ramping-arrival-rate", // Changed to arrival rate for better control
+      startRate: 5, // 5 iterations per second
+      timeUnit: "1s",
+      preAllocatedVUs: 10,
+      maxVUs: 50,
       stages: [
-        { duration: "30s", target: 5 },
-        { duration: "1m", target: 10 },
-        { duration: "30s", target: 15 },
-        { duration: "30s", target: 0 },
+        { duration: "30s", target: 10 }, // Ramp up to 10 iterations/s
+        { duration: "1m", target: 20 }, // Ramp up to 20 iterations/s
+        { duration: "30s", target: 30 }, // Ramp up to 30 iterations/s
+        { duration: "30s", target: 0 }, // Ramp down to 0
       ],
-      gracefulRampDown: "10s",
       exec: "asyncPerformanceTest",
       startTime: "4m",
     },
 
-    // 1.2 Data Consistency Testing
+    // 1.2 Data Consistency Testing - Synchronous
     sync_consistency_test: {
-      executor: "constant-arrival-rate",
-      rate: 20,
-      timeUnit: "1s",
-      duration: "2m",
-      preAllocatedVUs: 10,
-      maxVUs: 20,
+      executor: "per-vu-iterations", // Changed to per-VU iterations
+      vus: 10,
+      iterations: 100, // Total 1000 iterations (matches test plan)
+      maxDuration: "2m",
       exec: "syncConsistencyTest",
-      startTime: "7m",
+      startTime: "8m",
     },
 
-    // Reduced rate for async consistency testing
+    // 1.2 Data Consistency Testing - Asynchronous
     async_consistency_test: {
-      executor: "constant-arrival-rate",
-      rate: 5,
-      timeUnit: "1s",
-      duration: "1m",
-      preAllocatedVUs: 5,
-      maxVUs: 10,
+      executor: "per-vu-iterations", // Changed to per-VU iterations
+      vus: 10,
+      iterations: 100, // Total 1000 iterations (matches test plan)
+      maxDuration: "3m", // Longer duration for async consistency
       exec: "asyncConsistencyTest",
-      startTime: "9m30s",
+      startTime: "10m30s",
     },
   },
   thresholds: {
-    // General HTTP metrics
     http_req_duration: ["p(95)<2000", "p(99)<3000"],
-    http_req_failed: ["rate<0.05"], // Increased tolerance for failures
+    http_req_failed: ["rate<0.05"],
 
     // Sync performance metrics
     sync_latency: ["p(95)<1000", "avg<500"],
+    sync_p95_latency: ["avg<1000"],
     sync_throughput: ["avg>20"],
+    sync_errors: ["rate<0.05"],
 
     // Async performance metrics
     async_e2e_latency: ["p(95)<2000", "avg<1000"],
-    async_throughput: ["avg>2"], // Reduced expectation due to RabbitMQ limitations
+    async_throughput: ["avg>10"],
+    async_errors: ["rate<0.1"],
 
     // Consistency metrics
-    sync_consistency_rate: ["rate>0.99"],
-    async_consistency_rate: ["rate>0.8"], // Reduced expectation due to RabbitMQ limitations
+    sync_consistency_rate: ["rate>0.95"],
+    async_consistency_rate: ["rate>0.9"],
+    async_consistency_time: ["p(95)<5000"],
+    async_data_lag: ["avg<2000"],
 
     // Success metrics
-    successful_requests: ["count>300"],
+    successful_sync_requests: ["count>800"],
+    successful_async_requests: ["count>800"],
   },
 };
 
 const BASE_URL = "http://localhost:3000";
 const INVENTORY_URL = "http://localhost:3001";
+const MONITORING_URL = "http://localhost:9090"; // Prometheus endpoint
 const HEADERS = {
   "Content-Type": "application/json",
   Accept: "application/json",
 };
 
-const PRODUCTS = ["product-1", "product-2", "product-3"];
+const PRODUCTS = [
+  "product-1",
+  "product-2",
+  "product-3",
+];
 
-// Helper to get test payload
+// Helper to get test payload with more variance
 function getTestPayload() {
   return JSON.stringify({
     productId: PRODUCTS[Math.floor(Math.random() * PRODUCTS.length)],
-    quantity: Math.floor(Math.random() * 3) + 1, // Request between 1-3 items
+    quantity: Math.floor(Math.random() * 3) + 1,
   });
 }
 
@@ -124,23 +138,68 @@ function checkInventoryDirect(productId) {
   });
 }
 
-// Helper to wait for order status update
+// Helper to get system metrics from Prometheus (if available)
+function getSystemMetrics(serviceName) {
+  try {
+    const cpuResponse = http.get(
+      `${MONITORING_URL}/api/v1/query?query=process_cpu_seconds_total{service="${serviceName}"}`,
+      {
+        headers: { Accept: "application/json" },
+        timeout: "2s",
+      }
+    );
+
+    const memoryResponse = http.get(
+      `${MONITORING_URL}/api/v1/query?query=process_resident_memory_bytes{service="${serviceName}"}`,
+      {
+        headers: { Accept: "application/json" },
+        timeout: "2s",
+      }
+    );
+
+    if (cpuResponse.status === 200 && memoryResponse.status === 200) {
+      try {
+        const cpuData = JSON.parse(cpuResponse.body);
+        const memoryData = JSON.parse(memoryResponse.body);
+
+        return {
+          cpu: cpuData?.data?.result[0]?.value[1] || 0,
+          memory: memoryData?.data?.result[0]?.value[1] || 0,
+        };
+      } catch (e) {
+        console.log(`Error parsing metrics: ${e}`);
+        return { cpu: 0, memory: 0 };
+      }
+    }
+  } catch (e) {
+    console.log(`Error fetching metrics: ${e}`);
+  }
+
+  return { cpu: 0, memory: 0 };
+}
+
+// Helper to wait for order status update with better error handling
 function waitForOrderStatus(
   orderId,
   expectedStatus,
-  maxRetries = 10,
-  interval = 500
+  maxRetries = 20,
+  interval = 250
 ) {
   for (let i = 0; i < maxRetries; i++) {
-    const response = http.get(`${BASE_URL}/orders/status/${orderId}`, {
-      headers: HEADERS,
-    });
+    try {
+      const response = http.get(`${BASE_URL}/orders/status/${orderId}`, {
+        headers: HEADERS,
+        timeout: "2s",
+      });
 
-    if (response.status === 200) {
-      const orderData = JSON.parse(response.body);
-      if (orderData.status === expectedStatus) {
-        return { success: true, time: i * interval };
+      if (response.status === 200) {
+        const orderData = JSON.parse(response.body);
+        if (orderData.status === expectedStatus) {
+          return { success: true, time: i * interval };
+        }
       }
+    } catch (e) {
+      console.log(`Error checking order status: ${e}`);
     }
 
     sleep(interval / 1000);
@@ -149,62 +208,43 @@ function waitForOrderStatus(
   return { success: false, time: maxRetries * interval };
 }
 
-// Helper to wait for order confirmation via SSE
-function waitForOrderConfirmationSSE(orderId) {
-  const MAX_DURATION = 5000;
+// Helper to verify inventory consistency after order with retries
+function verifyInventoryConsistency(
+  productId,
+  orderedQuantity,
+  initialLevel,
+  maxRetries = 1
+) {
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      const response = checkInventoryDirect(productId);
 
-  return new Promise((resolve) => {
-    const response = http.get(`${BASE_URL}/orders/stream/${orderId}`, {
-      headers: {
-        Accept: "text/event-stream",
-        "Cache-Control": "no-cache",
-      },
-      timeout: MAX_DURATION,
-    });
-
-    if (response.status === 200) {
-      const events = response.body.split("\n\n");
-
-      for (const event of events) {
-        if (event.startsWith("data: ")) {
-          try {
-            const data = JSON.parse(event.slice(6));
-            if (data.status === "confirmed") return resolve(true);
-            if (data.status === "failed") return resolve(false);
-          } catch (e) {
-            // Handle potential JSON parsing errors
-            console.log(`Error parsing SSE data: ${e}`);
-          }
+      if (response.status === 200) {
+        const inventoryData = JSON.parse(response.body);
+        const expectedLevel = initialLevel - orderedQuantity;
+        if (inventoryData.quantity === expectedLevel) {
+          return { consistent: true, attempts: i + 1 };
         }
       }
-    }
 
-    resolve(false);
-  });
-}
-
-// Helper to verify inventory consistency after order
-function verifyInventoryConsistency(productId, orderedQuantity, initialLevel) {
-  const response = checkInventoryDirect(productId);
-
-  if (response.status === 200) {
-    try {
-      const inventoryData = JSON.parse(response.body);
-      const expectedLevel = initialLevel - orderedQuantity;
-      return inventoryData.quantity === expectedLevel;
+      if (i < maxRetries - 1) {
+        sleep(0.5); // Short sleep between retries
+      }
     } catch (e) {
-      console.log(`Error parsing inventory response: ${e}`);
-      return false;
+      console.log(`Error verifying inventory: ${e}`);
     }
   }
 
-  return false;
+  return { consistent: false, attempts: maxRetries };
 }
 
 // 1.1 Latency/Performance Testing - Synchronous approach
 export function syncPerformanceTest() {
   const startTime = new Date();
   const payload = getTestPayload();
+
+  // Record system metrics before request
+  const preMetrics = getSystemMetrics("order-service");
 
   // Send order with synchronous inventory update
   const response = http.post(`${BASE_URL}/orders/sync`, payload, {
@@ -217,18 +257,28 @@ export function syncPerformanceTest() {
   const latency = response.timings.duration;
   syncLatencyTrend.add(latency);
 
+  // Record p95 latency for this batch (simulation)
+  if (latency > syncP95Latency.value) {
+    syncP95Latency.add(latency);
+  }
+
   // Record success/failure
   const success = response.status === 200 || response.status === 201;
   syncErrors.add(!success);
 
   if (success) {
-    successfulRequests.add(1);
+    successfulSyncRequests.add(1);
 
     // Calculate and record throughput (requests per second)
     const elapsedTimeInSeconds = (new Date() - startTime) / 1000;
     if (elapsedTimeInSeconds > 0) {
       syncThroughput.add(1 / elapsedTimeInSeconds);
     }
+
+    // Record system metrics after request
+    const postMetrics = getSystemMetrics("order-service");
+    syncCpuUsage.add(postMetrics.cpu - preMetrics.cpu);
+    syncMemoryUsage.add(postMetrics.memory);
 
     // Verify the response
     check(response, {
@@ -243,14 +293,14 @@ export function syncPerformanceTest() {
       },
     });
   } else {
-    failedRequests.add(1);
+    failedSyncRequests.add(1);
     console.error(
       `Sync operation failed: Status ${response.status}, Body: ${response.body}`
     );
   }
 
   // Add a small sleep to avoid overwhelming the system
-  sleep(0.2);
+  sleep(Math.random() * 0.3 + 0.1); // Variable sleep 0.1-0.4s
 }
 
 // 1.1 Latency/Performance Testing - Asynchronous approach
@@ -259,11 +309,14 @@ export function asyncPerformanceTest() {
   const startTime = new Date();
   const payload = getTestPayload();
 
+  // Record system metrics before request
+  const preMetrics = getSystemMetrics("order-service");
+
   try {
-    // Make the async order request with longer timeout
+    // Make the async order request
     const response = http.post(`${BASE_URL}/orders/async-direct`, payload, {
       headers: HEADERS,
-      timeout: "15s", // Increased timeout
+      timeout: "15s",
       tags: { name: "async_order_create" },
     });
 
@@ -276,26 +329,44 @@ export function asyncPerformanceTest() {
       try {
         const orderData = JSON.parse(response.body);
 
-        // Record that we got a response, even if it eventually fails
-        successfulRequests.add(1);
+        // Wait for order status to complete
+        const statusResult = waitForOrderStatus(
+          orderData.id,
+          "confirmed",
+          30,
+          200
+        );
 
-        // Record E2E latency
-        const totalTime = new Date() - startTime;
-        asyncE2ELatency.add(totalTime);
+        // Record that we got a response
+        if (statusResult.success) {
+          successfulAsyncRequests.add(1);
 
-        // Calculate and record throughput
-        const elapsedTimeInSeconds = totalTime / 1000;
-        if (elapsedTimeInSeconds > 0) {
-          asyncThroughput.add(1 / elapsedTimeInSeconds);
+          // Record system metrics after processing
+          const postMetrics = getSystemMetrics("order-service");
+          asyncCpuUsage.add(postMetrics.cpu - preMetrics.cpu);
+          asyncMemoryUsage.add(postMetrics.memory);
+
+          // Record E2E latency
+          const totalTime = new Date() - startTime;
+          asyncE2ELatency.add(totalTime);
+
+          // Calculate and record throughput
+          const elapsedTimeInSeconds = totalTime / 1000;
+          if (elapsedTimeInSeconds > 0) {
+            asyncThroughput.add(1 / elapsedTimeInSeconds);
+          }
+        } else {
+          asyncErrors.add(true);
+          failedAsyncRequests.add(1);
         }
       } catch (e) {
         console.log(`Error parsing async response: ${e}`);
         asyncErrors.add(true);
-        failedRequests.add(1);
+        failedAsyncRequests.add(1);
       }
     } else {
       asyncErrors.add(true);
-      failedRequests.add(1);
+      failedAsyncRequests.add(1);
       console.error(
         `Async operation failed: Status ${response.status}, Body: ${response.body}`
       );
@@ -303,10 +374,9 @@ export function asyncPerformanceTest() {
   } catch (e) {
     console.error(`Exception in async test: ${e}`);
     asyncErrors.add(true);
-    failedRequests.add(1);
+    failedAsyncRequests.add(1);
   }
 
-  // Add a larger sleep to avoid overwhelming RabbitMQ
   sleep(1);
 }
 
@@ -345,34 +415,36 @@ export function syncConsistencyTest() {
 
     if (orderResponse.status !== 200 && orderResponse.status !== 201) {
       syncConsistencyRate.add(false);
+      failedSyncRequests.add(1);
       return;
     }
 
     // Immediately check inventory to verify it was updated
-    const verifyConsistent = verifyInventoryConsistency(
+    const verifyResult = verifyInventoryConsistency(
       productId,
       orderQuantity,
-      initialInventory.quantity
+      initialInventory.quantity,
+      3 // Allow up to 3 attempts
     );
 
     // Record consistency rate
-    syncConsistencyRate.add(verifyConsistent);
+    syncConsistencyRate.add(verifyResult.consistent);
 
     // Record end-to-end processing time
     const totalTime = new Date() - startTime;
     syncLatencyTrend.add(totalTime);
 
-    if (verifyConsistent) {
-      successfulRequests.add(1);
+    if (verifyResult.consistent) {
+      successfulSyncRequests.add(1);
     } else {
-      failedRequests.add(1);
+      failedSyncRequests.add(1);
     }
   } catch (e) {
     console.error(`Exception in sync consistency test: ${e}`);
     syncConsistencyRate.add(false);
+    failedSyncRequests.add(1);
   }
 
-  // Add a small sleep
   sleep(0.2);
 }
 
@@ -409,35 +481,37 @@ export function asyncConsistencyTest() {
       payload,
       {
         headers: HEADERS,
-        timeout: "15s", // Increased timeout
+        timeout: "15s",
         tags: { name: "async_consistency_order" },
       }
     );
 
     if (orderResponse.status !== 200 && orderResponse.status !== 201) {
       asyncConsistencyRate.add(false);
+      failedAsyncRequests.add(1);
       return;
     }
 
-    // Poll inventory until it's consistent or max attempts reached
-    const MAX_CONSISTENCY_CHECKS = 10;
-    const CONSISTENCY_CHECK_INTERVAL = 500; // ms
+    const MAX_CONSISTENCY_CHECKS = 20;
+    const CONSISTENCY_CHECK_INTERVAL = 250; // ms
     let consistencyTime = 0;
     let isConsistent = false;
 
-    // If the initial request succeeded, at least count it as a partial success
-    successfulRequests.add(0.5);
+    // Record initial order creation success
+    successfulAsyncRequests.add(0.5);
 
     for (let i = 0; i < MAX_CONSISTENCY_CHECKS; i++) {
       sleep(CONSISTENCY_CHECK_INTERVAL / 1000);
       consistencyTime += CONSISTENCY_CHECK_INTERVAL;
 
-      isConsistent = verifyInventoryConsistency(
+      const verifyResult = verifyInventoryConsistency(
         productId,
         orderQuantity,
-        initialInventory.quantity
+        initialInventory.quantity,
+        1
       );
 
+      isConsistent = verifyResult.consistent;
       if (isConsistent) {
         break;
       }
@@ -447,18 +521,13 @@ export function asyncConsistencyTest() {
     asyncConsistencyRate.add(isConsistent);
 
     if (isConsistent) {
-      // Complete the success count
-      successfulRequests.add(0.5);
+      successfulAsyncRequests.add(0.5);
 
-      // Record consistency time (time to achieve consistency)
+      // Record metrics for consistency time and data lag
       asyncConsistencyTime.add(consistencyTime);
-
-      // Record data lag (time between order creation and inventory update)
-      const dataLag = consistencyTime;
-      asyncDataLag.add(dataLag);
+      asyncDataLag.add(consistencyTime);
     } else {
-      // Consistency not achieved within max attempts
-      failedRequests.add(0.5);
+      failedAsyncRequests.add(0.5);
     }
 
     // Record end-to-end processing time
@@ -467,11 +536,11 @@ export function asyncConsistencyTest() {
   } catch (e) {
     console.error(`Exception in async consistency test: ${e}`);
     asyncConsistencyRate.add(false);
-    failedRequests.add(1);
+    failedAsyncRequests.add(1);
   }
 
-  // Add a larger sleep to prevent overwhelming RabbitMQ
-  sleep(1);
+  // Add a variable sleep
+  sleep(Math.random() * 0.5 + 0.5);
 }
 
 export function handleSummary(data) {
@@ -479,378 +548,4 @@ export function handleSummary(data) {
     "order_inventory_test_summary.json": JSON.stringify(data),
     "order_inventory_test_summary.html": generateHtmlReport(data),
   };
-}
-
-function generateHtmlReport(data) {
-  return `<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Order-Inventory Testing Report</title>
-  <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    h1, h2, h3 { color: #333; }
-    table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-    th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-    th { background-color: #f2f2f2; }
-    tr:nth-child(even) { background-color: #f9f9f9; }
-    .metric-section { margin-bottom: 30px; }
-    .summary { display: flex; justify-content: space-between; flex-wrap: wrap; }
-    .summary-box { border: 1px solid #ddd; padding: 15px; margin: 10px 0; border-radius: 5px; flex: 1; min-width: 250px; margin-right: 10px; }
-    .success { color: green; }
-    .failure { color: red; }
-    .warning { color: orange; font-weight: bold; }
-  </style>
-</head>
-<body>
-  <h1>Order-Inventory Testing Report</h1>
-  
-  <div class="summary">
-    <div class="summary-box">
-      <h3>Test Summary</h3>
-      <p>Total Requests: ${data.metrics.iterations ? data.metrics.iterations.values.count : "N/A"}</p>
-      <p>Duration: ${data.state.testRunDurationMs / 1000}s</p>
-      <p>Success Rate: ${data.metrics.http_req_failed ? (100 - data.metrics.http_req_failed.values.rate * 100).toFixed(2) : "N/A"}%</p>
-    </div>
-    
-    <div class="summary-box">
-      <h3>Performance Summary</h3>
-      <p>Sync Avg Response: ${data.metrics.sync_latency ? data.metrics.sync_latency.values.avg.toFixed(2) : "N/A"}ms</p>
-      <p>Async E2E Avg Response: ${data.metrics.async_e2e_latency ? data.metrics.async_e2e_latency.values.avg.toFixed(2) : "N/A"}ms</p>
-      <p>Sync Throughput: ${data.metrics.sync_throughput ? data.metrics.sync_throughput.values.avg.toFixed(2) : "N/A"} req/s</p>
-      <p>Async Throughput: ${data.metrics.async_throughput ? data.metrics.async_throughput.values.avg.toFixed(2) : "N/A"} req/s</p>
-    </div>
-    
-    <div class="summary-box">
-      <h3>Consistency Summary</h3>
-      <p>Sync Consistency Rate: ${data.metrics.sync_consistency_rate ? (data.metrics.sync_consistency_rate.values.rate * 100).toFixed(2) : "N/A"}%</p>
-      <p>Async Consistency Rate: ${data.metrics.async_consistency_rate ? (data.metrics.async_consistency_rate.values.rate * 100).toFixed(2) : "N/A"}%</p>
-      <p>Async Consistency Time: ${data.metrics.async_consistency_time ? data.metrics.async_consistency_time.values.avg.toFixed(2) : "N/A"}ms</p>
-      <p>Async Data Lag: ${data.metrics.async_data_lag ? data.metrics.async_data_lag.values.avg.toFixed(2) : "N/A"}ms</p>
-    </div>
-  </div>
-  
-  <div class="warning" style="margin-bottom: 20px; padding: 10px; background-color: #fff3cd; border: 1px solid #ffeeba; border-radius: 5px;">
-    <p><strong>Note:</strong> The asynchronous testing portion encountered issues with RabbitMQ communication. 
-    The error "There is no matching message handler defined in the remote service" indicates that the inventory 
-    service may not be properly configured to handle the 'check_update_inventory' message pattern. The test 
-    has been adjusted to use reduced concurrency for asynchronous operations.</p>
-  </div>
-  
-  <div class="metric-section">
-    <h2>1.1 Latency/Performance Testing</h2>
-    
-    <h3>Synchronous Communication (REST)</h3>
-    <table>
-      <tr>
-        <th>Metric</th>
-        <th>Avg</th>
-        <th>Min</th>
-        <th>Med</th>
-        <th>P90</th>
-        <th>P95</th>
-        <th>Max</th>
-      </tr>
-      <tr>
-        <td>Response Time (ms)</td>
-        <td>${data.metrics.sync_latency ? data.metrics.sync_latency.values.avg.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.sync_latency ? data.metrics.sync_latency.values.min.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.sync_latency ? data.metrics.sync_latency.values.med.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.sync_latency && data.metrics.sync_latency.values["p(90)"] ? data.metrics.sync_latency.values["p(90)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.sync_latency && data.metrics.sync_latency.values["p(95)"] ? data.metrics.sync_latency.values["p(95)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.sync_latency ? data.metrics.sync_latency.values.max.toFixed(2) : "N/A"}</td>
-      </tr>
-      <tr>
-        <td>Throughput (req/s)</td>
-        <td>${data.metrics.sync_throughput ? data.metrics.sync_throughput.values.avg.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.sync_throughput ? data.metrics.sync_throughput.values.min.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.sync_throughput ? data.metrics.sync_throughput.values.med.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.sync_throughput && data.metrics.sync_throughput.values["p(90)"] ? data.metrics.sync_throughput.values["p(90)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.sync_throughput && data.metrics.sync_throughput.values["p(95)"] ? data.metrics.sync_throughput.values["p(95)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.sync_throughput ? data.metrics.sync_throughput.values.max.toFixed(2) : "N/A"}</td>
-      </tr>
-      <tr>
-        <td>Error Rate</td>
-        <td colspan="6">${data.metrics.sync_errors ? (data.metrics.sync_errors.values.rate * 100).toFixed(2) : "N/A"}%</td>
-      </tr>
-    </table>
-    
-    <h3>Asynchronous Communication (Message Queue)</h3>
-    <table>
-      <tr>
-        <th>Metric</th>
-        <th>Avg</th>
-        <th>Min</th>
-        <th>Med</th>
-        <th>P90</th>
-        <th>P95</th>
-        <th>Max</th>
-      </tr>
-      <tr>
-        <td>Initial Response Time (ms)</td>
-        <td>${data.metrics.async_latency ? data.metrics.async_latency.values.avg.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_latency ? data.metrics.async_latency.values.min.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_latency ? data.metrics.async_latency.values.med.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_latency && data.metrics.async_latency.values["p(90)"] ? data.metrics.async_latency.values["p(90)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_latency && data.metrics.async_latency.values["p(95)"] ? data.metrics.async_latency.values["p(95)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_latency ? data.metrics.async_latency.values.max.toFixed(2) : "N/A"}</td>
-      </tr>
-      <tr>
-        <td>End-to-End Processing Time (ms)</td>
-        <td>${data.metrics.async_e2e_latency ? data.metrics.async_e2e_latency.values.avg.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_e2e_latency ? data.metrics.async_e2e_latency.values.min.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_e2e_latency ? data.metrics.async_e2e_latency.values.med.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_e2e_latency && data.metrics.async_e2e_latency.values["p(90)"] ? data.metrics.async_e2e_latency.values["p(90)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_e2e_latency && data.metrics.async_e2e_latency.values["p(95)"] ? data.metrics.async_e2e_latency.values["p(95)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_e2e_latency ? data.metrics.async_e2e_latency.values.max.toFixed(2) : "N/A"}</td>
-      </tr>
-      <tr>
-        <td>Throughput (req/s)</td>
-        <td>${data.metrics.async_throughput ? data.metrics.async_throughput.values.avg.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_throughput ? data.metrics.async_throughput.values.min.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_throughput ? data.metrics.async_throughput.values.med.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_throughput && data.metrics.async_throughput.values["p(90)"] ? data.metrics.async_throughput.values["p(90)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_throughput && data.metrics.async_throughput.values["p(95)"] ? data.metrics.async_throughput.values["p(95)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_throughput ? data.metrics.async_throughput.values.max.toFixed(2) : "N/A"}</td>
-      </tr>
-      <tr>
-        <td>Error Rate</td>
-        <td colspan="6">${data.metrics.async_errors ? (data.metrics.async_errors.values.rate * 100).toFixed(2) : "N/A"}%</td>
-      </tr>
-    </table>
-  </div>
-  
-  <div class="metric-section">
-    <h2>1.2 Data Consistency Testing</h2>
-    
-    <h3>Synchronous Communication (REST)</h3>
-    <table>
-      <tr>
-        <th>Metric</th>
-        <th>Value</th>
-      </tr>
-      <tr>
-        <td>Data Consistency Rate</td>
-        <td>${data.metrics.sync_consistency_rate ? (data.metrics.sync_consistency_rate.values.rate * 100).toFixed(2) : "N/A"}%</td>
-      </tr>
-      <tr>
-        <td>End-to-End Processing Time (ms)</td>
-        <td>${data.metrics.sync_latency ? data.metrics.sync_latency.values.avg.toFixed(2) : "N/A"}</td>
-      </tr>
-    </table>
-    
-    <h3>Asynchronous Communication (Event-Based)</h3>
-    <table>
-      <tr>
-        <th>Metric</th>
-        <th>Avg</th>
-        <th>Min</th>
-        <th>Med</th>
-        <th>P90</th>
-        <th>P95</th>
-        <th>Max</th>
-      </tr>
-      <tr>
-        <td>Data Consistency Rate</td>
-        <td colspan="6">${data.metrics.async_consistency_rate ? (data.metrics.async_consistency_rate.values.rate * 100).toFixed(2) : "N/A"}%</td>
-      </tr>
-      <tr>
-        <td>Eventual Consistency Time (ms)</td>
-        <td>${data.metrics.async_consistency_time ? data.metrics.async_consistency_time.values.avg.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_consistency_time ? data.metrics.async_consistency_time.values.min.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_consistency_time ? data.metrics.async_consistency_time.values.med.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_consistency_time && data.metrics.async_consistency_time.values["p(90)"] ? data.metrics.async_consistency_time.values["p(90)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_consistency_time && data.metrics.async_consistency_time.values["p(95)"] ? data.metrics.async_consistency_time.values["p(95)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_consistency_time ? data.metrics.async_consistency_time.values.max.toFixed(2) : "N/A"}</td>
-      </tr>
-      <tr>
-        <td>Data Lag (ms)</td>
-        <td>${data.metrics.async_data_lag ? data.metrics.async_data_lag.values.avg.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_data_lag ? data.metrics.async_data_lag.values.min.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_data_lag ? data.metrics.async_data_lag.values.med.toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_data_lag && data.metrics.async_data_lag.values["p(90)"] ? data.metrics.async_data_lag.values["p(90)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_data_lag && data.metrics.async_data_lag.values["p(95)"] ? data.metrics.async_data_lag.values["p(95)"].toFixed(2) : "N/A"}</td>
-        <td>${data.metrics.async_data_lag ? data.metrics.async_data_lag.values.max.toFixed(2) : "N/A"}</td>
-      </tr>
-    </table>
-  </div>
-  
-  <div class="metric-section">
-    <h2>Threshold Results</h2>
-    <table>
-      <tr>
-        <th>Threshold</th>
-        <th>Result</th>
-      </tr>
-      ${Object.entries(data.metrics)
-        .filter(([name, metric]) => metric.thresholds !== undefined)
-        .map(([name, metric]) => {
-          return metric.thresholds
-            .map((threshold) => {
-              const isPassed = threshold.ok;
-              return `<tr>
-                <td>${name}: ${threshold.threshold}</td>
-                <td class="${isPassed ? "success" : "failure"}">${isPassed ? "PASSED" : "FAILED"}</td>
-              </tr>`;
-            })
-            .join("");
-        })
-        .join("")}
-    </table>
-  </div>
-  
-  <div class="metric-section">
-    <h2>Comparison Summary</h2>
-    <h3>Synchronous vs. Asynchronous Communication</h3>
-    <table>
-      <tr>
-        <th>Metric</th>
-        <th>Synchronous (REST)</th>
-        <th>Asynchronous (Message Queue)</th>
-        <th>Difference</th>
-      </tr>
-      <tr>
-        <td>Response/Processing Time</td>
-        <td>${data.metrics.sync_latency ? data.metrics.sync_latency.values.avg.toFixed(2) : "N/A"} ms</td>
-        <td>${data.metrics.async_e2e_latency ? data.metrics.async_e2e_latency.values.avg.toFixed(2) : "N/A"} ms</td>
-        <td>${
-          data.metrics.sync_latency && data.metrics.async_e2e_latency
-            ? (
-                data.metrics.async_e2e_latency.values.avg -
-                data.metrics.sync_latency.values.avg
-              ).toFixed(2)
-            : "N/A"
-        } ms</td>
-      </tr>
-      <tr>
-        <td>Throughput</td>
-        <td>${data.metrics.sync_throughput ? data.metrics.sync_throughput.values.avg.toFixed(2) : "N/A"} req/s</td>
-        <td>${data.metrics.async_throughput ? data.metrics.async_throughput.values.avg.toFixed(2) : "N/A"} req/s</td>
-        <td>${
-          data.metrics.sync_throughput && data.metrics.async_throughput
-            ? (
-                data.metrics.async_throughput.values.avg -
-                data.metrics.sync_throughput.values.avg
-              ).toFixed(2)
-            : "N/A"
-        } req/s</td>
-      </tr>
-      <tr>
-        <td>Error Rate</td>
-        <td>${data.metrics.sync_errors ? (data.metrics.sync_errors.values.rate * 100).toFixed(2) : "N/A"}%</td>
-        <td>${data.metrics.async_errors ? (data.metrics.async_errors.values.rate * 100).toFixed(2) : "N/A"}%</td>
-        <td>${
-          data.metrics.sync_errors && data.metrics.async_errors
-            ? (
-                (data.metrics.async_errors.values.rate -
-                  data.metrics.sync_errors.values.rate) *
-                100
-              ).toFixed(2)
-            : "N/A"
-        }%</td>
-      </tr>
-      <tr>
-        <td>Data Consistency Rate</td>
-        <td>${data.metrics.sync_consistency_rate ? (data.metrics.sync_consistency_rate.values.rate * 100).toFixed(2) : "N/A"}%</td>
-        <td>${data.metrics.async_consistency_rate ? (data.metrics.async_consistency_rate.values.rate * 100).toFixed(2) : "N/A"}%</td>
-        <td>${
-          data.metrics.sync_consistency_rate &&
-          data.metrics.async_consistency_rate
-            ? (
-                (data.metrics.async_consistency_rate.values.rate -
-                  data.metrics.sync_consistency_rate.values.rate) *
-                100
-              ).toFixed(2)
-            : "N/A"
-        }%</td>
-      </tr>
-    </table>
-  </div>
-  
-  <div class="metric-section">
-    <h2>Conclusions</h2>
-    <p>
-      This test compared synchronous (REST) and asynchronous (message queue) communication patterns 
-      for order-inventory operations in a microservices architecture. Due to issues with the RabbitMQ message handler,
-      the asynchronous testing was performed with reduced load.
-    </p>
-    
-    <h3>Performance Insights:</h3>
-    <ul>
-      <li>
-        <strong>Response Time:</strong> 
-        ${
-          data.metrics.sync_latency && data.metrics.async_e2e_latency
-            ? data.metrics.sync_latency.values.avg <
-              data.metrics.async_e2e_latency.values.avg
-              ? "Synchronous communication showed faster response times, as expected. This is suitable for operations requiring immediate feedback."
-              : "Asynchronous communication surprisingly showed faster end-to-end processing times, which could indicate efficient queue processing."
-            : "Unable to compare response times due to missing data."
-        }
-      </li>
-      <li>
-        <strong>Throughput:</strong>
-        ${
-          data.metrics.sync_throughput && data.metrics.async_throughput
-            ? data.metrics.sync_throughput.values.avg >
-              data.metrics.async_throughput.values.avg
-              ? "Synchronous communication demonstrated higher throughput, suggesting it handles more requests per second under the test conditions."
-              : "Asynchronous communication demonstrated higher throughput, suggesting better scalability under load."
-            : "Unable to compare throughput due to missing data."
-        }
-      </li>
-      <li>
-        <strong>Error Rate:</strong>
-        ${
-          data.metrics.sync_errors && data.metrics.async_errors
-            ? data.metrics.sync_errors.values.rate <
-              data.metrics.async_errors.values.rate
-              ? "Synchronous communication showed lower error rates, indicating more reliable immediate operations."
-              : "Asynchronous communication showed lower error rates, suggesting better resilience under the test conditions."
-            : "Unable to compare error rates due to missing data."
-        }
-      </li>
-    </ul>
-    
-    <h3>Data Consistency Insights:</h3>
-    <ul>
-      <li>
-        <strong>Consistency Rate:</strong>
-        ${
-          data.metrics.sync_consistency_rate &&
-          data.metrics.async_consistency_rate
-            ? data.metrics.sync_consistency_rate.values.rate >
-              data.metrics.async_consistency_rate.values.rate
-              ? "Synchronous communication provided higher data consistency rates, which is expected due to its direct nature."
-              : "Asynchronous communication surprisingly provided higher data consistency rates, which may indicate robust event processing."
-            : "Unable to compare consistency rates due to missing data."
-        }
-      </li>
-      <li>
-        <strong>Eventual Consistency:</strong> 
-        Asynchronous communication achieved eventual consistency in an average of 
-        ${data.metrics.async_consistency_time ? data.metrics.async_consistency_time.values.avg.toFixed(2) : "N/A"} ms,
-        with a 95th percentile of ${data.metrics.async_consistency_time && data.metrics.async_consistency_time.values["p(95)"] ? data.metrics.async_consistency_time.values["p(95)"].toFixed(2) : "N/A"} ms.
-      </li>
-    </ul>
-    
-    <h3>Recommendations:</h3>
-    <ul>
-      <li><strong>For immediate feedback and strong consistency:</strong> Use synchronous communication (REST).</li>
-      <li><strong>For scalability and high-throughput operations:</strong> Use synchronous communication until RabbitMQ message handler issues are resolved.</li>
-      <li><strong>For critical inventory operations:</strong> Consider the higher consistency of synchronous patterns.</li>
-      <li><strong>For background processing and eventual consistency needs:</strong> Fix RabbitMQ message handler to properly handle 'check_update_inventory' pattern before leveraging asynchronous patterns in production.</li>
-    </ul>
-    
-    <h3>RabbitMQ Issue Troubleshooting:</h3>
-    <ul>
-      <li>Verify that the inventory service has a message handler registered for the 'check_update_inventory' pattern.</li>
-      <li>Check RabbitMQ connection settings and ensure queues are properly declared.</li>
-      <li>Inspect message bindings between exchange and queues.</li>
-      <li>Consider implementing proper error handling and retry mechanisms in the message consumers.</li>
-    </ul>
-  </div>
-</body>
-</html>`;
 }

@@ -8,7 +8,9 @@ COPY apps/order-service/package*.json ./apps/order-service/
 
 COPY libs/common/package*.json ./libs/common/
 
-RUN npm install
+RUN npm config set registry https://registry.npmmirror.com/ && \
+    npm cache clean --force && \
+    npm install --no-fund --no-audit
 
 COPY . .
 

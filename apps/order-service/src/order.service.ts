@@ -7,7 +7,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { timeout, catchError, retry, firstValueFrom } from 'rxjs';
+import { timeout, catchError, retry, firstValueFrom, throwError } from 'rxjs';
 import { Repository } from 'typeorm';
 import { Order } from './order.entity';
 import { HttpService } from '@nestjs/axios';
@@ -146,7 +146,9 @@ export class OrderService {
             retry(3),
             catchError((error) => {
               this.logger.error(`RabbitMQ communication failed: ${error}`);
-              throw new RequestTimeoutException('Inventory service timeout');
+              return throwError(
+                () => new RequestTimeoutException('Inventory service timeout'),
+              );
             }),
           ),
       ).then((response) => {

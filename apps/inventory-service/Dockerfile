@@ -12,7 +12,10 @@ COPY apps/inventory-service/package*.json ./apps/inventory-service/
 COPY libs/common/package*.json ./libs/common/
 
 # Cài đặt dependencies
-RUN npm install
+
+RUN npm config set registry https://registry.npmmirror.com/ && \
+    npm cache clean --force && \
+    npm install --no-fund --no-audit
 
 # Sao chép tất cả code
 COPY . .

@@ -34,7 +34,6 @@ export class InventoryController {
   async handleCheckInventory(data: CheckInventoryDto) {
     const checkResult = await this.inventoryService.checkInventory(data);
     if (checkResult.isAvailable) {
-      this.logger.log(`Inventory check successful for ${data.productId}`);
       return this.inventoryService.updateInventory(data);
     }
     return checkResult;

@@ -69,7 +69,11 @@ export class OrderController {
 
   @Post('/payment/async')
   async processPaymentAsync(@Body() paymentDto: ProcessPaymentDto) {
-    return this.orderService.processPaymentAsync(paymentDto);
+    try {
+      return await this.orderService.processPaymentAsync(paymentDto);
+    } catch (error) {
+      console.error(`Failed to process payment asynchronously: ${error}`);
+    }
   }
 
   @Get('payment/status/:transactionId')
