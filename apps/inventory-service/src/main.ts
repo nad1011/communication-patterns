@@ -11,13 +11,11 @@ async function bootstrap() {
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
     options: {
-      urls: [`${process.env.RABBITMQ_HOST}:${process.env.RABBITMQ_PORT}`],
+      urls: [process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672'],
       queue: 'inventory_queue',
       queueOptions: {
         durable: true,
       },
-      prefetchCount: 20,
-      noAck: false,
     },
   });
 

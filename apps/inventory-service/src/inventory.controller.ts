@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Param, Logger } from '@nestjs/common';
+import { Controller, Get, Post, Body, Param } from '@nestjs/common';
 import { MessagePattern } from '@nestjs/microservices';
 import {
   CheckInventoryDto,
@@ -9,8 +9,6 @@ import { InventoryService } from './inventory.service';
 
 @Controller('inventory')
 export class InventoryController {
-  private readonly logger = new Logger(InventoryController.name);
-
   constructor(private readonly inventoryService: InventoryService) {}
 
   @Post()

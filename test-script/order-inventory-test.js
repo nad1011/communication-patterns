@@ -117,11 +117,7 @@ const HEADERS = {
   Accept: "application/json",
 };
 
-const PRODUCTS = [
-  "product-1",
-  "product-2",
-  "product-3",
-];
+const PRODUCTS = ["product-1", "product-2", "product-3"];
 
 // Helper to get test payload with more variance
 function getTestPayload() {
@@ -179,33 +175,118 @@ function getSystemMetrics(serviceName) {
 }
 
 // Helper to wait for order status update with better error handling
-function waitForOrderStatus(
-  orderId,
-  expectedStatus,
-  maxRetries = 20,
-  interval = 250
-) {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const response = http.get(`${BASE_URL}/orders/status/${orderId}`, {
-        headers: HEADERS,
-        timeout: "2s",
-      });
+// function waitForOrderStatus(orderId, expectedStatus, maxDuration = 5000) {
+//   const startTime = new Date();
 
-      if (response.status === 200) {
-        const orderData = JSON.parse(response.body);
-        if (orderData.status === expectedStatus) {
-          return { success: true, time: i * interval };
-        }
-      }
-    } catch (e) {
-      console.log(`Error checking order status: ${e}`);
-    }
+//   try {
+//     const response = http.get(`${BASE_URL}/orders/stream/${orderId}`, {
+//       headers: {
+//         Accept: "text/event-stream",
+//         "Cache-Control": "no-cache",
+//       },
+//       timeout: maxDuration,
+//     });
 
-    sleep(interval / 1000);
+//     if (response.status === 200) {
+//       const events = response.body.split("\n\n");
+
+//       for (const event of events) {
+//         if (event.startsWith("data: ")) {
+//           try {
+//             const data = JSON.parse(event.slice(6));
+//             if (data.status == expectedStatus) {
+//               return { success: true, time: new Date() - startTime };
+//             }
+//             if (data.status == "failed") {
+//               return { success: false, time: new Date() - startTime };
+//             }
+//           } catch (e) {
+//             console.log(`Error parsing SSE data: ${e}`);
+//           }
+//         }
+//       }
+//     }
+
+//     return { success: false, time: new Date() - startTime };
+//   } catch (e) {
+//     console.log(`Error with SSE connection: ${e}`);
+//     return { success: false, time: new Date() - startTime };
+//   }
+// }
+function waitForOrderStatus(orderId, expectedStatus, maxDuration = 5000) {
+  const startTime = new Date();
+
+  const response = http.get(`${BASE_URL}/orders/stream/${orderId}`, {
+    headers: {
+      Accept: "text/event-stream",
+      "Cache-Control": "no-cache",
+    },
+    timeout: maxDuration,
+  });
+
+  if (response.status !== 200) {
+    console.log(`Error: Received status code ${response.status}`);
+    return {
+      success: false,
+      time: new Date() - startTime,
+      error: `Bad status: ${response.status}`,
+    };
   }
 
-  return { success: false, time: maxRetries * interval };
+  if (!response.body) {
+    return {
+      success: false,
+      time: new Date() - startTime,
+      error: "Empty response body",
+    };
+  }
+
+  try {
+    const eventStrings = response.body
+      .toString()
+      .split(/\n\n+/)
+      .filter((str) => str.trim() !== "");
+
+    for (const eventString of eventStrings) {
+      const dataMatch = eventString.match(/^data: (.+)$/m);
+      if (dataMatch) {
+        try {
+          const eventData = JSON.parse(dataMatch[1]);
+
+          if (eventData.status === expectedStatus) {
+            return {
+              success: true,
+              time: new Date() - startTime,
+              status: eventData.status,
+            };
+          }
+
+          if (
+            eventData.status === "failed" ||
+            eventData.status === "payment_failed"
+          ) {
+            return {
+              success: false,
+              time: new Date() - startTime,
+              status: eventData.status,
+            };
+          }
+        } catch (parseError) {
+          console.log(`Error parsing event data: ${parseError}`);
+        }
+      }
+    }
+
+    return {
+      success: false,
+      time: new Date() - startTime,
+      error: "Expected status not found in events",
+      events: eventStrings.length,
+    };
+  } catch (e) {
+    console.log(`Error processing SSE: ${e}`);
+    return { success: false, time: new Date() - startTime, error: String(e) };
+  }
 }
 
 // Helper to verify inventory consistency after order with retries
@@ -305,8 +386,6 @@ export function syncPerformanceTest() {
 
 // 1.1 Latency/Performance Testing - Asynchronous approach
 export function asyncPerformanceTest() {
-  // Record the start timestamp for E2E latency
-  const startTime = new Date();
   const payload = getTestPayload();
 
   // Record system metrics before request
@@ -329,15 +408,12 @@ export function asyncPerformanceTest() {
       try {
         const orderData = JSON.parse(response.body);
 
-        // Wait for order status to complete
         const statusResult = waitForOrderStatus(
           orderData.id,
           "confirmed",
-          30,
-          200
+          5000
         );
 
-        // Record that we got a response
         if (statusResult.success) {
           successfulAsyncRequests.add(1);
 
@@ -347,11 +423,10 @@ export function asyncPerformanceTest() {
           asyncMemoryUsage.add(postMetrics.memory);
 
           // Record E2E latency
-          const totalTime = new Date() - startTime;
-          asyncE2ELatency.add(totalTime);
+          asyncE2ELatency.add(statusResult.time);
 
           // Calculate and record throughput
-          const elapsedTimeInSeconds = totalTime / 1000;
+          const elapsedTimeInSeconds = statusResult.time / 1000;
           if (elapsedTimeInSeconds > 0) {
             asyncThroughput.add(1 / elapsedTimeInSeconds);
           }
@@ -377,7 +452,7 @@ export function asyncPerformanceTest() {
     failedAsyncRequests.add(1);
   }
 
-  sleep(1);
+  sleep(Math.random() * 0.3 + 0.1);
 }
 
 // 1.2 Data Consistency Testing - Synchronous approach
@@ -492,60 +567,51 @@ export function asyncConsistencyTest() {
       return;
     }
 
-    const MAX_CONSISTENCY_CHECKS = 20;
-    const CONSISTENCY_CHECK_INTERVAL = 250; // ms
-    let consistencyTime = 0;
-    let isConsistent = false;
+    try {
+      const orderData = JSON.parse(orderResponse.body);
 
-    // Record initial order creation success
-    successfulAsyncRequests.add(0.5);
+      const statusResult = waitForOrderStatus(orderData.id, "confirmed", 5000);
 
-    for (let i = 0; i < MAX_CONSISTENCY_CHECKS; i++) {
-      sleep(CONSISTENCY_CHECK_INTERVAL / 1000);
-      consistencyTime += CONSISTENCY_CHECK_INTERVAL;
+      if (statusResult.success) {
+        const verifyResult = verifyInventoryConsistency(
+          productId,
+          orderQuantity,
+          initialInventory.quantity,
+          1
+        );
 
-      const verifyResult = verifyInventoryConsistency(
-        productId,
-        orderQuantity,
-        initialInventory.quantity,
-        1
-      );
+        asyncConsistencyRate.add(verifyResult.consistent);
+        asyncConsistencyTime.add(statusResult.time);
+        asyncDataLag.add(statusResult.time);
 
-      isConsistent = verifyResult.consistent;
-      if (isConsistent) {
-        break;
+        if (verifyResult.consistent) {
+          successfulAsyncRequests.add(1);
+        } else {
+          failedAsyncRequests.add(0.5);
+        }
+      } else {
+        asyncConsistencyRate.add(false);
+        failedAsyncRequests.add(1);
       }
+
+      const totalTime = new Date() - startTime;
+      asyncE2ELatency.add(totalTime);
+    } catch (e) {
+      console.error(`Error processing async order: ${e}`);
+      asyncConsistencyRate.add(false);
+      failedAsyncRequests.add(1);
     }
-
-    // Record data consistency rate
-    asyncConsistencyRate.add(isConsistent);
-
-    if (isConsistent) {
-      successfulAsyncRequests.add(0.5);
-
-      // Record metrics for consistency time and data lag
-      asyncConsistencyTime.add(consistencyTime);
-      asyncDataLag.add(consistencyTime);
-    } else {
-      failedAsyncRequests.add(0.5);
-    }
-
-    // Record end-to-end processing time
-    const totalTime = new Date() - startTime;
-    asyncE2ELatency.add(totalTime);
   } catch (e) {
     console.error(`Exception in async consistency test: ${e}`);
     asyncConsistencyRate.add(false);
     failedAsyncRequests.add(1);
   }
 
-  // Add a variable sleep
-  sleep(Math.random() * 0.5 + 0.5);
+  sleep(0.2);
 }
 
 export function handleSummary(data) {
   return {
     "order_inventory_test_summary.json": JSON.stringify(data),
-    "order_inventory_test_summary.html": generateHtmlReport(data),
   };
 }

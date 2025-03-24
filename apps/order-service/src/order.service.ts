@@ -28,7 +28,7 @@ const HTTP_CONFIG = {
 @Injectable()
 export class OrderService {
   private readonly logger = new Logger(OrderService.name);
-  private readonly inventoryBaseUrl = `http://${process.env.INVENTORY_HOST || 'inventory-service'}:${process.env.INVENTORY_PORT || 3001}`;
+  private readonly inventoryBaseUrl = `http://${process.env.INVENTORY_HOST || 'localhost'}:${process.env.INVENTORY_PORT || 3001}`;
   private readonly paymentBaseUrl = `http://${process.env.PAYMENT_HOST || 'localhost'}:${process.env.PAYMENT_PORT || 3002}`;
   private readonly notificationBaseUrl = `http://${process.env.NOTIFICATION_HOST || 'localhost'}:${process.env.NOTIFICATION_PORT || 3004}`;
   private readonly emailBaseUrl = `http://${process.env.EMAIL_HOST || 'localhost'}:${process.env.EMAIL_PORT || 3003}`;
@@ -145,22 +145,30 @@ export class OrderService {
             timeout(5000),
             retry(3),
             catchError((error) => {
-              this.logger.error(`RabbitMQ communication failed: ${error}`);
+              this.logger.error(
+                `RabbitMQ communication failed: ${JSON.stringify(error)}`,
+              );
               return throwError(
                 () => new RequestTimeoutException('Inventory service timeout'),
               );
             }),
           ),
-      ).then((response) => {
-        if (!response.isAvailable) {
+      )
+        .then((response) => {
+          if (!response.isAvailable) {
+            order.status = 'failed';
+            void this.orderRepository.save(order);
+            throw new BadRequestException('Insufficient inventory');
+          } else {
+            order.status = 'confirmed';
+            void this.orderRepository.save(order);
+          }
+        })
+        .catch((error) => {
+          this.logger.error(`Async order failed: ${error}`);
           order.status = 'failed';
-          void this.orderRepository.save(order);
-          throw new BadRequestException('Insufficient inventory');
-        } else {
-          order.status = 'confirmed';
-          void this.orderRepository.save(order);
-        }
-      });
+          void this.orderRepository.save;
+        });
       return order;
     } catch (error) {
       this.logger.error(`Async order failed: ${error}`);
