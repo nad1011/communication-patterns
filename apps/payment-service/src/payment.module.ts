@@ -22,15 +22,30 @@ import { Payment } from './payment.entity';
           },
         }),
       },
+      // {
+      //   name: 'ORDER_SERVICE',
+      //   useFactory: () => ({
+      //     transport: Transport.RMQ,
+      //     options: {
+      //       urls: ['amqp://localhost:5672'],
+      //       queue: 'order_queue',
+      //       queueOptions: {
+      //         durable: true,
+      //       },
+      //     },
+      //   }),
+      // },
       {
-        name: 'ORDER_SERVICE',
+        name: 'KAFKA_CLIENT',
         useFactory: () => ({
-          transport: Transport.RMQ,
+          transport: Transport.KAFKA,
           options: {
-            urls: ['amqp://localhost:5672'],
-            queue: 'order_queue',
-            queueOptions: {
-              durable: true,
+            client: {
+              brokers: ['localhost:9092'],
+              clientId: 'payment-service',
+            },
+            consumer: {
+              groupId: 'payment-consumer',
             },
           },
         }),

@@ -57,6 +57,19 @@ import { Order } from './order.entity';
           },
         },
       },
+      {
+        name: 'KAFKA_SERVICE',
+        transport: Transport.KAFKA,
+        options: {
+          client: {
+            clientId: 'payment-service',
+            brokers: [process.env.KAFKA_BROKERS],
+          },
+          consumer: {
+            groupId: 'payment-consumer',
+          },
+        },
+      },
     ]),
   ],
   controllers: [OrderController],

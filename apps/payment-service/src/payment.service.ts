@@ -7,7 +7,7 @@ import {
   PaymentResponseDto,
   PAYMENT_PATTERNS,
 } from '@app/common';
-import { uuid } from 'uuidv4';
+import { v4 as uuid } from 'uuid';
 import { ClientProxy } from '@nestjs/microservices';
 
 @Injectable()
@@ -15,7 +15,7 @@ export class PaymentService {
   constructor(
     @InjectRepository(Payment)
     private paymentRepository: Repository<Payment>,
-    @Inject('ORDER_SERVICE') private orderClient: ClientProxy,
+    @Inject('KAFKA_CLIENT') private orderClient: ClientProxy,
   ) {}
 
   async processPayment(
@@ -83,9 +83,9 @@ export class PaymentService {
       'Processing payment with external gateway for payment: ',
       payment.id,
     );
-    await new Promise((resolve) => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 500));
 
-    const success = Math.random() < 0.9;
+    const success = Math.random() < 0.95;
 
     const transactionId = uuid();
 

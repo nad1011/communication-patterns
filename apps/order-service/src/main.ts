@@ -5,20 +5,6 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // RabbitMQ Configuration
-  // app.connectMicroservice<MicroserviceOptions>({
-  //   transport: Transport.RMQ,
-  //   options: {
-  //     urls: [`${process.env.RABBITMQ_HOST}:${process.env.RABBITMQ_PORT}`],
-  //     queue: 'inventory_queue',
-  //     queueOptions: {
-  //       durable: true,
-  //     },
-  //     prefetchCount: 20,
-  //     noAck: false,
-  //   },
-  // });
-
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
     options: {

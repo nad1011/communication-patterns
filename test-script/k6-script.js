@@ -199,7 +199,6 @@ function handleAsyncResponse(response, startTime, latencyTrend, e2eLatencyTrend,
 }
 
 function handlePaymentResponse(response, startTime, latencyTrend, e2eLatencyTrend, errorRate, patternName) {
-  // Đo thời gian phản hồi ban đầu
   const initialDuration = response.timings.duration;
   latencyTrend.add(initialDuration);
 
@@ -215,15 +214,12 @@ function handlePaymentResponse(response, startTime, latencyTrend, e2eLatencyTren
   const paymentData = JSON.parse(response.body);
   const orderId = paymentData.orderId;
   
-  // Đo thời gian xử lý thực tế (bao gồm cả 2s chờ đợi)
   const processingStartTime = new Date();
   const paymentCompleted = waitForPaymentCompletion(orderId);
   const processingDuration = new Date() - processingStartTime;
   
-  // Thêm một metric mới để theo dõi thời gian xử lý thực tế
   asyncPaymentProcessingLatency.add(processingDuration);
   
-  // Tính tổng thời gian end-to-end
   const totalDuration = new Date() - startTime;
   e2eLatencyTrend.add(totalDuration);
 
@@ -231,7 +227,6 @@ function handlePaymentResponse(response, startTime, latencyTrend, e2eLatencyTren
     successfulPayments.add(1);
     errorRate.add(false);
   } else {
-    // Trường hợp chờ lâu không thấy cập nhật trạng thái
     failedPayments.add(1);
     errorRate.add(true);
   }

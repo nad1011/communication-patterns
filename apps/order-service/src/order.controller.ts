@@ -49,7 +49,11 @@ export class OrderController {
               }),
             );
 
-            if (order.status === 'confirmed' || order.status === 'failed') {
+            if (
+              order.status === 'confirmed' ||
+              order.status === 'paid' ||
+              order.status === 'failed'
+            ) {
               clearInterval(interval);
               subscriber.complete();
             }
@@ -86,6 +90,7 @@ export class OrderController {
     orderId: string;
     payload: PaymentResponseDto;
   }) {
+    console.log('Received payment status:', data);
     const order = await this.orderService.getOrderById(data.orderId);
     if (data.payload.success) {
       return this.orderService.updateOrderPaymentStatus(order, data.payload);

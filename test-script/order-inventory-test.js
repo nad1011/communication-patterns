@@ -174,45 +174,6 @@ function getSystemMetrics(serviceName) {
   return { cpu: 0, memory: 0 };
 }
 
-// Helper to wait for order status update with better error handling
-// function waitForOrderStatus(orderId, expectedStatus, maxDuration = 5000) {
-//   const startTime = new Date();
-
-//   try {
-//     const response = http.get(`${BASE_URL}/orders/stream/${orderId}`, {
-//       headers: {
-//         Accept: "text/event-stream",
-//         "Cache-Control": "no-cache",
-//       },
-//       timeout: maxDuration,
-//     });
-
-//     if (response.status === 200) {
-//       const events = response.body.split("\n\n");
-
-//       for (const event of events) {
-//         if (event.startsWith("data: ")) {
-//           try {
-//             const data = JSON.parse(event.slice(6));
-//             if (data.status == expectedStatus) {
-//               return { success: true, time: new Date() - startTime };
-//             }
-//             if (data.status == "failed") {
-//               return { success: false, time: new Date() - startTime };
-//             }
-//           } catch (e) {
-//             console.log(`Error parsing SSE data: ${e}`);
-//           }
-//         }
-//       }
-//     }
-
-//     return { success: false, time: new Date() - startTime };
-//   } catch (e) {
-//     console.log(`Error with SSE connection: ${e}`);
-//     return { success: false, time: new Date() - startTime };
-//   }
-// }
 function waitForOrderStatus(orderId, expectedStatus, maxDuration = 5000) {
   const startTime = new Date();
 
