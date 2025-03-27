@@ -67,6 +67,12 @@ import { Order } from './order.entity';
           },
           consumer: {
             groupId: 'payment-consumer',
+            allowAutoTopicCreation: true,
+            sessionTimeout: 30000,
+            maxInFlightRequests: 100,
+          },
+          producer: {
+            allowAutoTopicCreation: true,
           },
         },
       },

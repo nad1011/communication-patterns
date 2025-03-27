@@ -14,7 +14,9 @@ import { Payment } from './payment.entity';
         useFactory: () => ({
           transport: Transport.RMQ,
           options: {
-            urls: ['amqp://localhost:5672'],
+            urls: [
+              process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672',
+            ],
             queue: 'payment_queue',
             queueOptions: {
               durable: true,
@@ -22,19 +24,6 @@ import { Payment } from './payment.entity';
           },
         }),
       },
-      // {
-      //   name: 'ORDER_SERVICE',
-      //   useFactory: () => ({
-      //     transport: Transport.RMQ,
-      //     options: {
-      //       urls: ['amqp://localhost:5672'],
-      //       queue: 'order_queue',
-      //       queueOptions: {
-      //         durable: true,
-      //       },
-      //     },
-      //   }),
-      // },
       {
         name: 'KAFKA_CLIENT',
         useFactory: () => ({
@@ -46,6 +35,12 @@ import { Payment } from './payment.entity';
             },
             consumer: {
               groupId: 'payment-consumer',
+              allowAutoTopicCreation: true,
+              sessionTimeout: 30000,
+              maxInFlightRequests: 100,
+            },
+            producer: {
+              allowAutoTopicCreation: true,
             },
           },
         }),

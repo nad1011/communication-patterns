@@ -9,6 +9,7 @@ import {
 } from '@app/common';
 import { v4 as uuid } from 'uuid';
 import { ClientProxy } from '@nestjs/microservices';
+import { firstValueFrom } from 'rxjs';
 
 @Injectable()
 export class PaymentService {
@@ -20,6 +21,7 @@ export class PaymentService {
 
   async processPayment(
     processPaymentDto: ProcessPaymentDto,
+    isSync: boolean,
   ): Promise<PaymentResponseDto> {
     const payment = this.paymentRepository.create({
       orderId: processPaymentDto.orderId,
@@ -47,10 +49,20 @@ export class PaymentService {
         status: payment.status,
       };
 
-      this.orderClient.emit(PAYMENT_PATTERNS.PAYMENT_CALLBACK, {
-        orderId: payment.orderId,
-        payload: response,
-      });
+      if (!isSync) {
+        try {
+          await firstValueFrom(
+            this.orderClient.emit(PAYMENT_PATTERNS.PAYMENT_CALLBACK, {
+              orderId: payment.orderId,
+              payload: response,
+            }),
+          );
+        } catch (error) {
+          console.error(
+            `Failed to send callback for order ${payment.orderId}: ${error}`,
+          );
+        }
+      }
 
       return response;
     } catch (error) {
@@ -65,10 +77,14 @@ export class PaymentService {
         status: 'failed',
       };
 
-      this.orderClient.emit(PAYMENT_PATTERNS.PAYMENT_CALLBACK, {
-        orderId: payment.orderId,
-        payload: { ...response },
-      });
+      if (!isSync) {
+        await firstValueFrom(
+          this.orderClient.emit(PAYMENT_PATTERNS.PAYMENT_CALLBACK, {
+            orderId: payment.orderId,
+            payload: response,
+          }),
+        );
+      }
 
       return response;
     }
@@ -79,11 +95,9 @@ export class PaymentService {
     transactionId?: string;
     message?: string;
   }> {
-    console.log(
-      'Processing payment with external gateway for payment: ',
-      payment.id,
-    );
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    const processingTime = Math.floor(Math.random() * 3000); // 1-3 seconds
+
+    await new Promise((resolve) => setTimeout(resolve, processingTime));
 
     const success = Math.random() < 0.95;
 
@@ -93,13 +107,13 @@ export class PaymentService {
       return {
         success: true,
         transactionId: transactionId,
-        message: 'Payment processed successfully',
+        message: `Payment processed successfully ${payment.id}`,
       };
     }
 
     return {
       success: false,
-      message: 'Payment declined by gateway',
+      message: `Payment declined by gateway ${payment.id}`,
     };
   }
 

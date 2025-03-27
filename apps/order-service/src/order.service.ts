@@ -202,7 +202,11 @@ export class OrderService {
         ),
     );
 
-    return response.data;
+    if (response.data.success) {
+      return this.updateOrderPaymentStatus(order, response.data);
+    } else {
+      return this.handlePaymentError(order, response.data.message);
+    }
   }
 
   async processPaymentAsync(paymentDto: ProcessPaymentDto) {
@@ -214,11 +218,7 @@ export class OrderService {
       ...paymentDto,
     });
 
-    return {
-      orderId: order.id,
-      status: 'payment_pending',
-      message: 'Payment processing initiated',
-    };
+    return order;
   }
 
   async getPaymentStatus(transactionId: string) {
@@ -247,18 +247,16 @@ export class OrderService {
     order.status = paymentResponse.success ? 'paid' : 'payment_failed';
     order.paymentId = paymentResponse.paymentId;
     order.paymentStatus = paymentResponse.status;
-
-    if (!paymentResponse.success) {
-      order.paymentError = paymentResponse.message;
-    }
-
-    await this.orderRepository.save(order);
+    order.paymentError = paymentResponse.success
+      ? null
+      : paymentResponse.message;
+    return await this.orderRepository.save(order);
   }
 
   async handlePaymentError(order: Order, error: string) {
     order.status = 'payment_failed';
     order.paymentError = error || 'Payment processing failed';
-    await this.orderRepository.save(order);
+    return await this.orderRepository.save(order);
   }
 
   async notifyServicesSync(order: Order) {

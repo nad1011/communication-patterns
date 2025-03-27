@@ -34,6 +34,9 @@ export class OrderController {
     @Param('orderId') orderId: string,
   ): Observable<MessageEvent> {
     return new Observable((subscriber) => {
+      const timeout = setTimeout(() => {
+        subscriber.complete();
+      }, 10000);
       const interval = setInterval(() => {
         from(this.orderService.getOrderById(orderId)).subscribe({
           next: (order) => {
@@ -52,17 +55,26 @@ export class OrderController {
             if (
               order.status === 'confirmed' ||
               order.status === 'paid' ||
-              order.status === 'failed'
+              order.status === 'failed' ||
+              order.status === 'payment_failed'
             ) {
               clearInterval(interval);
+              clearTimeout(timeout);
               subscriber.complete();
             }
           },
-          error: (error) => subscriber.error(error),
+          error: (error) => {
+            clearInterval(interval);
+            clearTimeout(timeout);
+            subscriber.error(error);
+          },
         });
-      }, 5);
+      }, 50);
 
-      return () => clearInterval(interval);
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+      };
     });
   }
 
@@ -73,11 +85,7 @@ export class OrderController {
 
   @Post('/payment/async')
   async processPaymentAsync(@Body() paymentDto: ProcessPaymentDto) {
-    try {
-      return await this.orderService.processPaymentAsync(paymentDto);
-    } catch (error) {
-      console.error(`Failed to process payment asynchronously: ${error}`);
-    }
+    return await this.orderService.processPaymentAsync(paymentDto);
   }
 
   @Get('payment/status/:transactionId')
@@ -90,7 +98,6 @@ export class OrderController {
     orderId: string;
     payload: PaymentResponseDto;
   }) {
-    console.log('Received payment status:', data);
     const order = await this.orderService.getOrderById(data.orderId);
     if (data.payload.success) {
       return this.orderService.updateOrderPaymentStatus(order, data.payload);

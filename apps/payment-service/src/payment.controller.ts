@@ -15,18 +15,18 @@ export class PaymentController {
   async processPaymentSync(
     @Body() processPaymentDto: ProcessPaymentDto,
   ): Promise<PaymentResponseDto> {
-    return this.paymentService.processPayment(processPaymentDto);
+    return this.paymentService.processPayment(processPaymentDto, true);
+  }
+
+  @MessagePattern(PAYMENT_PATTERNS.PROCESS_PAYMENT)
+  async processPaymentAsync(
+    processPaymentDto: ProcessPaymentDto,
+  ): Promise<PaymentResponseDto> {
+    return this.paymentService.processPayment(processPaymentDto, false);
   }
 
   @Get(':paymentId')
   async getPaymentStatus(@Param('paymentId') paymentId: string) {
     return this.paymentService.getPaymentStatus(paymentId);
-  }
-
-  @MessagePattern(PAYMENT_PATTERNS.PROCESS_PAYMENT)
-  async processPaymentAsync(
-    data: ProcessPaymentDto,
-  ): Promise<PaymentResponseDto> {
-    return this.paymentService.processPayment(data);
   }
 }
