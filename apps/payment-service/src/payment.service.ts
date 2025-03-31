@@ -95,11 +95,19 @@ export class PaymentService {
     transactionId?: string;
     message?: string;
   }> {
-    const processingTime = Math.floor(Math.random() * 3000); // 1-3 seconds
+    const processingTime = 3000 + Math.random() * 2000; // 3-5 seconds
 
-    await new Promise((resolve) => setTimeout(resolve, processingTime));
+    const shouldTimeout = Math.random() < 0.1;
 
-    const success = Math.random() < 0.95;
+    if (shouldTimeout) {
+      await new Promise((resolve) =>
+        setTimeout(resolve, 8000 + Math.random() * 2000),
+      );
+    } else {
+      await new Promise((resolve) => setTimeout(resolve, processingTime));
+    }
+
+    const success = Math.random() < 0.9 && !shouldTimeout;
 
     const transactionId = uuid();
 
@@ -113,7 +121,9 @@ export class PaymentService {
 
     return {
       success: false,
-      message: `Payment declined by gateway ${payment.id}`,
+      message: shouldTimeout
+        ? `Payment timed out ${payment.id}`
+        : `Payment declined by gateway ${payment.id}`,
     };
   }
 

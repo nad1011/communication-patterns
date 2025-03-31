@@ -5,14 +5,16 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { OrderController } from './order.controller';
 import { OrderService } from './order.service';
 import { Order } from './order.entity';
+import { CircuitBreakerModule } from './circuit-breaker/circuit-breaker.module';
 
 @Module({
   imports: [
     HttpModule.register({
-      timeout: 5000,
+      timeout: 10000,
       maxRedirects: 5,
     }),
     TypeOrmModule.forFeature([Order]),
+    CircuitBreakerModule,
     ClientsModule.register([
       {
         name: 'INVENTORY_SERVICE',

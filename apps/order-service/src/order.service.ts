@@ -18,6 +18,7 @@ import {
   PaymentResponseDto,
   PAYMENT_PATTERNS,
 } from '@app/common';
+import { CircuitBreakerService } from './circuit-breaker/circuit-breaker.service';
 
 const HTTP_CONFIG = {
   timeout: 5000,
@@ -38,6 +39,7 @@ export class OrderService {
     @InjectRepository(Order)
     private orderRepository: Repository<Order>,
     private readonly httpService: HttpService,
+    private readonly circuitBreakerService: CircuitBreakerService,
     @Inject('INVENTORY_SERVICE') private inventoryClient: ClientProxy,
     @Inject('PAYMENT_SERVICE') private paymentClient: ClientProxy,
     @Inject('KAFKA_SERVICE') private kafkaClient: ClientProxy,
@@ -183,29 +185,48 @@ export class OrderService {
     order.status = 'payment_pending';
     await this.orderRepository.save(order);
 
-    const response = await firstValueFrom(
-      this.httpService
-        .post<PaymentResponseDto>(
-          `${this.paymentBaseUrl}/payment/process`,
-          {
-            ...paymentDto,
-          },
-          { ...HTTP_CONFIG },
-        )
-        .pipe(
-          timeout(5000),
-          retry(3),
-          catchError((error) => {
-            this.logger.error(`Payment processing failed: ${error}`);
-            throw error;
-          }),
-        ),
-    );
+    try {
+      const response = await this.circuitBreakerService.fire(
+        'payment-service',
+        async () => {
+          return await firstValueFrom(
+            this.httpService
+              .post<PaymentResponseDto>(
+                `${this.paymentBaseUrl}/payment/process`,
+                { ...paymentDto },
+                { ...HTTP_CONFIG },
+              )
+              .pipe(
+                timeout(5000),
+                retry(3),
+                catchError((error) => {
+                  this.logger.error(`Payment processing failed: ${error}`);
+                  throw error;
+                }),
+              ),
+          );
+        },
+      );
 
-    if (response.data.success) {
-      return this.updateOrderPaymentStatus(order, response.data);
-    } else {
-      return this.handlePaymentError(order, response.data.message);
+      if (response.data.success) {
+        return this.updateOrderPaymentStatus(order, response.data);
+      } else {
+        return this.handlePaymentError(order, response.data.message);
+      }
+    } catch (error) {
+      if (error.type === 'open') {
+        this.logger.warn(
+          'Circuit breaker is open - payment service unreachable',
+        );
+        order.status = 'payment_pending';
+        order.paymentError = 'Payment service temporarily unavailable';
+        await this.orderRepository.save(order);
+        throw new ServiceUnavailableException(
+          'Payment service is currently unavailable, please try again later',
+        );
+      }
+
+      return this.handlePaymentError(order, error || 'Unknown payment error');
     }
   }
 
@@ -255,7 +276,8 @@ export class OrderService {
 
   async handlePaymentError(order: Order, error: string) {
     order.status = 'payment_failed';
-    order.paymentError = error || 'Payment processing failed';
+    order.paymentError =
+      typeof error === 'string' ? error : JSON.stringify(error);
     return await this.orderRepository.save(order);
   }
 
