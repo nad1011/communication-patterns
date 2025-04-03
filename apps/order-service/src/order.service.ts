@@ -290,88 +290,124 @@ export class OrderService {
       totalTime: 0,
     };
 
-    try {
-      // 1. Notify push notification service
+    // Chuẩn bị các hàm gọi service riêng biệt
+    const callNotificationService = async () => {
       const notificationStart = Date.now();
-      const notificationResponse = await firstValueFrom(
-        this.httpService
-          .post(`${this.notificationBaseUrl}/notifications`, {
-            orderId: order.id,
-            customerId: order.customerId,
-            message: `Your order #${order.id} has been confirmed`,
-            type: 'ORDER_CONFIRMATION',
-          })
-          .pipe(
-            timeout(5000),
-            catchError((error) => {
-              this.logger.error(`Notification service error: ${error}`);
-              throw error;
-            }),
-          ),
-      );
-      results.notification.success = notificationResponse.status === 201;
-      results.notification.time = Date.now() - notificationStart;
-    } catch (error) {
-      results.notification.error = error as string;
-    }
+      try {
+        const response = await firstValueFrom(
+          this.httpService
+            .post(`${this.notificationBaseUrl}/notifications`, {
+              orderId: order.id,
+              customerId: order.customerId || 'unknown',
+              message: `Your order #${order.id} has been confirmed`,
+              type: 'ORDER_CONFIRMATION',
+            })
+            .pipe(timeout(5000)),
+        );
+        return {
+          success: response.status === 201,
+          time: Date.now() - notificationStart,
+          error: null,
+        };
+      } catch (error) {
+        this.logger.error(`Notification service error: ${error}`);
+        return {
+          success: false,
+          time: Date.now() - notificationStart,
+          error: error.message || 'Unknown error',
+        };
+      }
+    };
 
-    try {
-      // 2. Notify email service
+    const callEmailService = async () => {
       const emailStart = Date.now();
-      const emailResponse = await firstValueFrom(
-        this.httpService
-          .post(`${this.emailBaseUrl}/emails`, {
-            orderId: order.id,
-            customerId: order.customerId,
-            subject: `Order Confirmation: #${order.id}`,
-            body: `Thank you for your order #${order.id}. Your order has been confirmed.`,
-          })
-          .pipe(
-            timeout(5000),
-            catchError((error: Error) => {
-              this.logger.error(`Email service error: ${error.message}`);
-              throw error;
-            }),
-          ),
-      );
-      results.email.success = emailResponse.status === 201;
-      results.email.time = Date.now() - emailStart;
-    } catch (error) {
-      results.email.error = error as string;
+      // Giữ nguyên mô phỏng lỗi nếu cần
+      const shouldFailEmail = Math.random() < 0.8;
+      const emailUrl = shouldFailEmail
+        ? `${this.emailBaseUrl}:9999/emails`
+        : `${this.emailBaseUrl}/emails`;
+
+      try {
+        const response = await firstValueFrom(
+          this.httpService
+            .post(emailUrl, {
+              orderId: order.id,
+              customerId: order.customerId || 'unknown',
+              subject: `Order Confirmation: #${order.id}`,
+              body: `Thank you for your order #${order.id}. Your order has been confirmed.`,
+            })
+            .pipe(timeout(5000)),
+        );
+        return {
+          success: response.status === 201,
+          time: Date.now() - emailStart,
+          error: null,
+        };
+      } catch (error) {
+        this.logger.error(`Email service error: ${error}`);
+        return {
+          success: false,
+          time: Date.now() - emailStart,
+          error: error.message || 'Unknown error',
+        };
+      }
+    };
+
+    const callAnalyticsService = async () => {
+      const analyticsStart = Date.now();
+      try {
+        const response = await firstValueFrom(
+          this.httpService
+            .post(`${this.analyticsBaseUrl}/events`, {
+              orderId: order.id,
+              customerId: order.customerId || 'unknown',
+              event: 'ORDER_CONFIRMED',
+              metadata: {
+                productId: order.productId,
+                quantity: order.quantity,
+              },
+            })
+            .pipe(timeout(5000)),
+        );
+        return {
+          success: response.status === 201,
+          time: Date.now() - analyticsStart,
+          error: null,
+        };
+      } catch (error) {
+        this.logger.error(`Analytics service error: ${error}`);
+        return {
+          success: false,
+          time: Date.now() - analyticsStart,
+          error: error.message || 'Unknown error',
+        };
+      }
+    };
+
+    // Gọi tất cả các service đồng thời và chờ tất cả hoàn thành (dù thành công hay thất bại)
+    const [notificationResult, emailResult, analyticsResult] =
+      await Promise.allSettled([
+        callNotificationService(),
+        callEmailService(),
+        callAnalyticsService(),
+      ]);
+
+    // Xử lý kết quả
+    if (notificationResult.status === 'fulfilled') {
+      results.notification = notificationResult.value;
     }
 
-    try {
-      // 3. Update analytics service
-      const analyticsStart = Date.now();
-      const analyticsResponse = await firstValueFrom(
-        this.httpService
-          .post(`${this.analyticsBaseUrl}/events`, {
-            orderId: order.id,
-            customerId: order.customerId,
-            event: 'ORDER_CONFIRMED',
-            metadata: {
-              productId: order.productId,
-              quantity: order.quantity,
-            },
-          })
-          .pipe(
-            timeout(5000),
-            catchError((error) => {
-              this.logger.error(`Analytics service error: ${error}`);
-              throw error;
-            }),
-          ),
-      );
-      results.analytics.success = analyticsResponse.status === 201;
-      results.analytics.time = Date.now() - analyticsStart;
-    } catch (error) {
-      results.analytics.error = error as string;
+    if (emailResult.status === 'fulfilled') {
+      results.email = emailResult.value;
+    }
+
+    if (analyticsResult.status === 'fulfilled') {
+      results.analytics = analyticsResult.value;
     }
 
     results.totalTime = Date.now() - startTime;
     return results;
   }
-
   // Asynchronous approach - Publish event once
   async notifyServicesAsync(order: Order) {
     const startTime = Date.now();

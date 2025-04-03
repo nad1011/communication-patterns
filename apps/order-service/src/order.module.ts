@@ -35,11 +35,13 @@ import { CircuitBreakerModule } from './circuit-breaker/circuit-breaker.module';
         options: {
           client: {
             clientId: 'order',
-            brokers: [process.env.KAFKA_BROKERS],
+            brokers: [process.env.KAFKA_BROKERS || 'localhost:9092'],
           },
           consumer: {
             groupId: 'order-consumer',
             allowAutoTopicCreation: true,
+            sessionTimeout: 30000,
+            maxInFlightRequests: 100,
           },
           producer: {
             allowAutoTopicCreation: true,
@@ -60,7 +62,7 @@ import { CircuitBreakerModule } from './circuit-breaker/circuit-breaker.module';
         },
       },
       {
-        name: 'KAFKA_SERVICE',
+        name: 'KAFKA_SERVICE_PAYMENT',
         transport: Transport.KAFKA,
         options: {
           client: {
