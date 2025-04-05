@@ -106,13 +106,16 @@ export class OrderController {
   }
 
   @Post(':orderId/notify-sync')
-  async notifySync(@Param('orderId') orderId: string) {
+  async notifySync(
+    @Param('orderId') orderId: string,
+    @Body() data: { disabledService: string },
+  ) {
     try {
       const order = await this.orderService.getOrderById(orderId);
       if (!order) {
         throw new Error('Order not found');
       }
-      return this.orderService.notifyServicesSync(order);
+      return this.orderService.notifyServicesSync(order, data);
     } catch (error) {
       throw new Error(`Failed to process notification: ${error}`);
     }

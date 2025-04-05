@@ -2,7 +2,6 @@ import http from "k6/http";
 import { check, sleep } from "k6";
 import { Rate, Trend, Counter } from "k6/metrics";
 
-// Configuration
 const BASE_URL = "http://localhost:3000";
 const MONITORING_URL = "http://localhost:9090"; // Prometheus endpoint for metrics
 const HEADERS = {
@@ -31,6 +30,13 @@ const asyncSuccessRate = new Rate("async_success_rate");
 // Failure resilience metrics
 const syncFailureRecoveryTime = new Trend("sync_failure_recovery_time");
 const syncErrorPropagation = new Rate("sync_error_propagation");
+const syncErrorPropagationRate = new Trend("sync_error_propagation_rate");
+const syncRecoveryAttempts = new Trend("sync_recovery_attempts");
+const syncErrorAllServicesAffected = new Rate(
+  "sync_error_all_services_affected"
+);
+const syncPartialSuccessRate = new Rate("sync_partial_success_rate");
+
 const asyncFailureRecoveryTime = new Trend("async_failure_recovery_time");
 const asyncSubscriberIndependence = new Rate("async_subscriber_independence");
 
@@ -44,7 +50,6 @@ const successfulAsyncNotifications = new Counter(
 );
 const failedAsyncNotifications = new Counter("failed_async_notifications");
 
-// Test configuration
 export const options = {
   scenarios: {
     // 3.1 Broadcast Performance for Synchronous Calls
@@ -96,6 +101,9 @@ export const options = {
     // Failure Impact Thresholds
     sync_failure_recovery_time: ["avg<2000", "p(95)<3000"],
     sync_error_propagation: ["rate<0.5"], // Errors shouldn't propagate to all services
+    sync_error_propagation_rate: ["avg<0.3"], // Average error propagation rate below 30%
+    sync_error_all_services_affected: ["rate<0.1"], // < 10% cases where all services fail
+    sync_partial_success_rate: ["rate>0.7"], // > 70% cases at least one service succeeds
 
     async_failure_recovery_time: ["avg<1000", "p(95)<2000"],
     async_subscriber_independence: ["rate>0.9"], // High independence rate
@@ -107,7 +115,6 @@ export const options = {
 };
 
 // Helper Functions
-
 function getRandomCustomerId() {
   return `cust-${Math.floor(Math.random() * 1000)}`;
 }
@@ -219,26 +226,32 @@ export async function testSyncBroadcastPerformance() {
       const responseData = JSON.parse(syncResponse.body);
 
       // Extract per-service times from the response
-      if (responseData.notification && responseData.notification.time) {
-        syncPerServiceTime.add(responseData.notification.time);
-        perServiceTimes.notification = responseData.notification.time;
+      if (
+        responseData.services?.notification &&
+        responseData.services.notification.time
+      ) {
+        syncPerServiceTime.add(responseData.services.notification.time);
+        perServiceTimes.notification = responseData.services.notification.time;
       }
 
-      if (responseData.email && responseData.email.time) {
-        syncPerServiceTime.add(responseData.email.time);
-        perServiceTimes.email = responseData.email.time;
+      if (responseData.services?.email && responseData.services.email.time) {
+        syncPerServiceTime.add(responseData.services.email.time);
+        perServiceTimes.email = responseData.services.email.time;
       }
 
-      if (responseData.analytics && responseData.analytics.time) {
-        syncPerServiceTime.add(responseData.analytics.time);
-        perServiceTimes.analytics = responseData.analytics.time;
+      if (
+        responseData.services?.analytics &&
+        responseData.services.analytics.time
+      ) {
+        syncPerServiceTime.add(responseData.services.analytics.time);
+        perServiceTimes.analytics = responseData.services.analytics.time;
       }
 
       // Determine if all services were successful
       success =
-        responseData.notification?.success !== false &&
-        responseData.email?.success !== false &&
-        responseData.analytics?.success !== false;
+        responseData.services?.notification?.success !== false &&
+        responseData.services?.email?.success !== false &&
+        responseData.services?.analytics?.success !== false;
     } catch (e) {
       console.error(`Failed to parse response: ${e.message}`);
       success = false;
@@ -436,92 +449,81 @@ export async function testSyncFailureImpact() {
     return;
   }
 
+  const services = ["notification", "email", "analytics"];
+  const disabledService = services[Math.floor(Math.random() * services.length)];
+
   const startTime = new Date();
 
-  // Call the notify-sync endpoint
   const syncResponse = http.post(
     `${BASE_URL}/orders/${order.id}/notify-sync`,
-    "",
+    JSON.stringify({
+      disabledService: disabledService,
+    }),
     { headers: HEADERS }
   );
 
-  const recoveryTime = new Date() - startTime;
-  syncFailureRecoveryTime.add(recoveryTime);
+  const totalTime = new Date() - startTime;
+  syncFailureRecoveryTime.add(totalTime);
 
-  let errorOccurred = false;
-  let errorPropagated = false;
+  let errorPropagationValue = 0;
+  let allServicesAffected = false;
   let partialSuccess = false;
+  let recoveryTime = 0;
+  let recoveryAttempts = 0;
 
   if (syncResponse.status === 200 || syncResponse.status === 201) {
     try {
       const responseData = JSON.parse(syncResponse.body);
 
-      // Kiểm tra có lỗi xảy ra không
-      errorOccurred =
-        responseData.flowInterrupted ||
-        !!responseData.notification?.error ||
-        !!responseData.email?.error ||
-        !!responseData.analytics?.error;
+      if (responseData.recoveryMetrics?.totalRecoveryTime) {
+        recoveryTime = responseData.recoveryMetrics.totalRecoveryTime;
+        syncFailureRecoveryTime.add(recoveryTime);
+      }
 
-      // Kiểm tra lỗi có lan truyền (nếu flow bị ngắt hoặc các service tiếp theo bị bỏ qua)
-      errorPropagated =
-        responseData.flowInterrupted ||
-        (!!responseData.email?.error &&
-          responseData.email.error.includes("Skipped")) ||
-        (!!responseData.analytics?.error &&
-          responseData.analytics.error.includes("Skipped"));
+      if (responseData.recoveryMetrics?.recoveryAttempts) {
+        recoveryAttempts = responseData.recoveryMetrics.recoveryAttempts;
+        syncRecoveryAttempts.add(recoveryAttempts);
+      }
 
-      // Kiểm tra có ít nhất một service thành công
+      if (responseData.errorMetrics) {
+        errorPropagationValue = responseData.errorMetrics.errorPropagation;
+        syncErrorPropagationRate.add(errorPropagationValue);
+
+        allServicesAffected =
+          responseData.errorMetrics.failedServices ===
+          responseData.errorMetrics.totalServices;
+        syncErrorAllServicesAffected.add(allServicesAffected);
+
+        syncErrorPropagation.add(errorPropagationValue > 0);
+      }
+
       partialSuccess =
-        responseData.notification?.success === true ||
-        responseData.email?.success === true ||
-        responseData.analytics?.success === true;
-
-      // Ghi nhận tỷ lệ lan truyền lỗi
-      syncErrorPropagation.add(errorPropagated);
-
-      console.log(
-        `Test Info - Error Occurred: ${errorOccurred}, Error Propagated: ${errorPropagated}, Partial Success: ${partialSuccess}`
-      );
-      console.log(
-        `Test Info - Flow Interrupted: ${responseData.flowInterrupted}`
-      );
-
-      // Ghi lại chi tiết về từng service
-      console.log(
-        `Notification: success=${responseData.notification?.success}, error=${responseData.notification?.error}`
-      );
-      console.log(
-        `Email: success=${responseData.email?.success}, error=${responseData.email?.error}`
-      );
-      console.log(
-        `Analytics: success=${responseData.analytics?.success}, error=${responseData.analytics?.error}`
-      );
+        responseData.partialSuccess || responseData.completedServices > 0;
+      syncPartialSuccessRate.add(partialSuccess);
     } catch (e) {
       console.error(`Failed to parse response: ${e.message}`);
-      errorOccurred = true;
-      errorPropagated = true;
       syncErrorPropagation.add(true);
+      syncErrorAllServicesAffected.add(true);
+      syncPartialSuccessRate.add(false);
     }
   } else {
     console.error(`Sync notification failed: ${syncResponse.status}`);
-    errorOccurred = true;
-    errorPropagated = true;
     syncErrorPropagation.add(true);
+    syncErrorAllServicesAffected.add(true);
+    syncPartialSuccessRate.add(false);
   }
 
   check(
     {
       responseReceived: syncResponse.status < 500,
-      errorOccurred: errorOccurred,
-      errorPropagated: errorPropagated,
+      errorPropagation: errorPropagationValue,
+      allServicesAffected: allServicesAffected,
       partialSuccess: partialSuccess,
       recoveryTime: recoveryTime,
     },
     {
       "Response was received despite failures": (r) => r.responseReceived,
-      "At least one error occurred (as expected)": (r) => r.errorOccurred,
-      "Error did not propagate to all services": (r) => !r.errorPropagated,
+      "Error did not propagate to all services": (r) => !r.allServicesAffected,
       "At least one service succeeded despite failures": (r) =>
         r.partialSuccess,
       "System recovered within acceptable time": (r) => r.recoveryTime < 5000,
