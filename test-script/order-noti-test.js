@@ -3,7 +3,7 @@ import { check, sleep } from "k6";
 import { Rate, Trend, Counter } from "k6/metrics";
 
 const BASE_URL = "http://localhost:3000";
-const MONITORING_URL = "http://localhost:9090"; // Prometheus endpoint for metrics
+const MONITORING_URL = "http://localhost:9090";
 const HEADERS = {
   "Content-Type": "application/json",
   Accept: "application/json",
@@ -40,7 +40,6 @@ const syncPartialSuccessRate = new Rate("sync_partial_success_rate");
 const asyncFailureRecoveryTime = new Trend("async_failure_recovery_time");
 const asyncSubscriberIndependence = new Rate("async_subscriber_independence");
 
-// Counter metrics
 const successfulSyncNotifications = new Counter(
   "successful_sync_notifications"
 );
@@ -56,7 +55,7 @@ export const options = {
     sync_broadcast_performance: {
       executor: "per-vu-iterations",
       vus: 10,
-      iterations: 20, // Total 200 notifications (matching test plan)
+      iterations: 20,
       maxDuration: "3m",
       exec: "testSyncBroadcastPerformance",
     },
@@ -65,10 +64,10 @@ export const options = {
     async_broadcast_performance: {
       executor: "per-vu-iterations",
       vus: 10,
-      iterations: 20, // Total 200 notifications (matching test plan)
+      iterations: 20,
       maxDuration: "3m",
       exec: "testAsyncBroadcastPerformance",
-      startTime: "3m30s", // Start after sync test completes
+      startTime: "3m30s",
     },
 
     // 3.2 Service Failure Impact for Synchronous Calls
@@ -77,7 +76,7 @@ export const options = {
       vus: 5,
       duration: "1m",
       exec: "testSyncFailureImpact",
-      startTime: "7m", // Start after both broadcast tests complete
+      startTime: "7m",
     },
 
     // 3.2 Service Failure Impact for Pub/Sub Event Bus
@@ -86,7 +85,7 @@ export const options = {
       vus: 5,
       duration: "1m",
       exec: "testAsyncFailureImpact",
-      startTime: "8m30s", // Start after sync failure test completes
+      startTime: "8m30s",
     },
   },
   thresholds: {
@@ -100,17 +99,17 @@ export const options = {
 
     // Failure Impact Thresholds
     sync_failure_recovery_time: ["avg<2000", "p(95)<3000"],
-    sync_error_propagation: ["rate<0.5"], // Errors shouldn't propagate to all services
-    sync_error_propagation_rate: ["avg<0.3"], // Average error propagation rate below 30%
-    sync_error_all_services_affected: ["rate<0.1"], // < 10% cases where all services fail
-    sync_partial_success_rate: ["rate>0.7"], // > 70% cases at least one service succeeds
+    sync_error_propagation: ["rate<0.5"],
+    sync_error_propagation_rate: ["avg<0.3"],
+    sync_error_all_services_affected: ["rate<0.1"],
+    sync_partial_success_rate: ["rate>0.7"],
 
     async_failure_recovery_time: ["avg<1000", "p(95)<2000"],
-    async_subscriber_independence: ["rate>0.9"], // High independence rate
+    async_subscriber_independence: ["rate>0.9"],
 
     // Overall success rates
-    successful_sync_notifications: ["count>150"], // At least 75% success
-    successful_async_notifications: ["count>180"], // At least 90% success
+    successful_sync_notifications: ["count>150"],
+    successful_async_notifications: ["count>180"],
   },
 };
 
@@ -148,7 +147,6 @@ async function createTestOrder() {
   }
 }
 
-// Get system metrics from Prometheus
 function getSystemMetrics(serviceName) {
   try {
     const cpuResponse = http.get(
@@ -198,7 +196,6 @@ export async function testSyncBroadcastPerformance() {
     return;
   }
 
-  // Get baseline metrics
   const preMetrics = {
     order: getSystemMetrics("order-service"),
     notification: getSystemMetrics("notification-service"),
@@ -208,7 +205,6 @@ export async function testSyncBroadcastPerformance() {
 
   const startTime = new Date();
 
-  // Call the notify-sync endpoint
   const syncResponse = http.post(
     `${BASE_URL}/orders/${order.id}/notify-sync`,
     "",
@@ -225,7 +221,6 @@ export async function testSyncBroadcastPerformance() {
     try {
       const responseData = JSON.parse(syncResponse.body);
 
-      // Extract per-service times from the response
       if (
         responseData.services?.notification &&
         responseData.services.notification.time
@@ -247,7 +242,6 @@ export async function testSyncBroadcastPerformance() {
         perServiceTimes.analytics = responseData.services.analytics.time;
       }
 
-      // Determine if all services were successful
       success =
         responseData.services?.notification?.success !== false &&
         responseData.services?.email?.success !== false &&
@@ -261,7 +255,6 @@ export async function testSyncBroadcastPerformance() {
     success = false;
   }
 
-  // Get post-operation metrics
   const postMetrics = {
     order: getSystemMetrics("order-service"),
     notification: getSystemMetrics("notification-service"),
@@ -269,7 +262,6 @@ export async function testSyncBroadcastPerformance() {
     analytics: getSystemMetrics("analytics-service"),
   };
 
-  // Calculate resource usage
   syncCpuUsage.add(
     postMetrics.order.cpu -
       preMetrics.order.cpu +
@@ -304,7 +296,6 @@ export async function testSyncBroadcastPerformance() {
     failedSyncNotifications.add(1);
   }
 
-  // Verify results with checks
   check(
     {
       responseCode: syncResponse.status,
@@ -325,7 +316,7 @@ export async function testSyncBroadcastPerformance() {
     }
   );
 
-  sleep(Math.random() * 0.3 + 0.2); // Variable sleep between iterations
+  sleep(Math.random() * 0.3 + 0.2);
 }
 
 // 3.1 Broadcast Performance - Pub/Sub Event Bus
@@ -338,7 +329,6 @@ export async function testAsyncBroadcastPerformance() {
     return;
   }
 
-  // Get baseline metrics
   const preMetrics = {
     order: getSystemMetrics("order-service"),
     notification: getSystemMetrics("notification-service"),
@@ -348,7 +338,6 @@ export async function testAsyncBroadcastPerformance() {
 
   const startTime = new Date();
 
-  // Call the notify-async endpoint
   const asyncResponse = http.post(
     `${BASE_URL}/orders/${order.id}/notify-async`,
     "",
@@ -364,7 +353,6 @@ export async function testAsyncBroadcastPerformance() {
     try {
       const responseData = JSON.parse(asyncResponse.body);
 
-      // Extract response data
       success = responseData.success === true;
 
       if (responseData.time) {
@@ -379,7 +367,6 @@ export async function testAsyncBroadcastPerformance() {
     success = false;
   }
 
-  // Get post-operation metrics (after a short delay to allow async processing)
   sleep(0.5);
 
   const postMetrics = {
@@ -389,7 +376,6 @@ export async function testAsyncBroadcastPerformance() {
     analytics: getSystemMetrics("analytics-service"),
   };
 
-  // Calculate resource usage
   asyncCpuUsage.add(
     postMetrics.order.cpu -
       preMetrics.order.cpu +
@@ -414,7 +400,6 @@ export async function testAsyncBroadcastPerformance() {
       (postMetrics.analytics.network - preMetrics.analytics.network)
   );
 
-  // Record success rate
   asyncSuccessRate.add(success);
   asyncErrors.add(!success);
 
@@ -424,7 +409,6 @@ export async function testAsyncBroadcastPerformance() {
     failedAsyncNotifications.add(1);
   }
 
-  // Verify results
   check(
     {
       responseCode: asyncResponse.status,
@@ -437,10 +421,9 @@ export async function testAsyncBroadcastPerformance() {
     }
   );
 
-  sleep(Math.random() * 0.3 + 0.2); // Variable sleep between iterations
+  sleep(Math.random() * 0.3 + 0.2);
 }
 
-// 3.2 Service Failure Impact - Synchronous Calls
 export async function testSyncFailureImpact() {
   const order = await createTestOrder();
 
@@ -535,9 +518,7 @@ export async function testSyncFailureImpact() {
 
 // 3.2 Service Failure Impact - Pub/Sub Event Bus
 export async function testAsyncFailureImpact() {
-  // For this test, we're assuming that one of the subscriber services (notification, email, analytics)
-  // has been disabled or is not working correctly in the test environment.
-  // This would typically be configured before running the test.
+  // Disabling a service before run this test
 
   const order = await createTestOrder();
 
@@ -548,7 +529,6 @@ export async function testAsyncFailureImpact() {
 
   const startTime = new Date();
 
-  // Call the notify-async endpoint
   const asyncResponse = http.post(
     `${BASE_URL}/orders/${order.id}/notify-async`,
     "",
@@ -573,15 +553,8 @@ export async function testAsyncFailureImpact() {
     publishSuccessful = false;
   }
 
-  // In the pub/sub model, the key is that the event should be published successfully
-  // even if one of the subscribers is down. All working subscribers should still
-  // process the event independently.
-
-  // We'll simulate checking if the message was successfully published to Kafka
-  // In a real test, you might have a way to check Kafka metrics or logs
   asyncSubscriberIndependence.add(publishSuccessful ? 1 : 0);
 
-  // Verify results
   check(
     {
       responseCode: asyncResponse.status,
@@ -597,10 +570,9 @@ export async function testAsyncFailureImpact() {
     }
   );
 
-  sleep(Math.random() * 0.5 + 0.5); // Longer sleep for failure testing
+  sleep(Math.random() * 0.5 + 0.5); 
 }
 
-// Generate summary report
 export function handleSummary(data) {
   return {
     "order_notification_test_summary.json": JSON.stringify(data),

@@ -47,8 +47,8 @@ export const options = {
 
     // 1.1 Latency/Performance Testing - Asynchronous
     async_performance_test: {
-      executor: "ramping-arrival-rate", // Changed to arrival rate for better control
-      startRate: 5, // 5 iterations per second
+      executor: "ramping-arrival-rate",
+      startRate: 5,
       timeUnit: "1s",
       preAllocatedVUs: 10,
       maxVUs: 50,
@@ -64,9 +64,9 @@ export const options = {
 
     // 1.2 Data Consistency Testing - Synchronous
     sync_consistency_test: {
-      executor: "per-vu-iterations", // Changed to per-VU iterations
+      executor: "per-vu-iterations",
       vus: 10,
-      iterations: 100, // Total 1000 iterations (matches test plan)
+      iterations: 100,
       maxDuration: "2m",
       exec: "syncConsistencyTest",
       startTime: "8m",
@@ -74,10 +74,10 @@ export const options = {
 
     // 1.2 Data Consistency Testing - Asynchronous
     async_consistency_test: {
-      executor: "per-vu-iterations", // Changed to per-VU iterations
+      executor: "per-vu-iterations",
       vus: 10,
-      iterations: 100, // Total 1000 iterations (matches test plan)
-      maxDuration: "3m", // Longer duration for async consistency
+      iterations: 100,
+      maxDuration: "3m",
       exec: "asyncConsistencyTest",
       startTime: "10m30s",
     },
@@ -86,24 +86,20 @@ export const options = {
     http_req_duration: ["p(95)<2000", "p(99)<3000"],
     http_req_failed: ["rate<0.05"],
 
-    // Sync performance metrics
     sync_latency: ["p(95)<1000", "avg<500"],
     sync_p95_latency: ["avg<1000"],
     sync_throughput: ["avg>20"],
     sync_errors: ["rate<0.05"],
 
-    // Async performance metrics
     async_e2e_latency: ["p(95)<2000", "avg<1000"],
     async_throughput: ["avg>10"],
     async_errors: ["rate<0.1"],
 
-    // Consistency metrics
     sync_consistency_rate: ["rate>0.95"],
     async_consistency_rate: ["rate>0.9"],
     async_consistency_time: ["p(95)<5000"],
     async_data_lag: ["avg<2000"],
 
-    // Success metrics
     successful_sync_requests: ["count>800"],
     successful_async_requests: ["count>800"],
   },
@@ -111,7 +107,7 @@ export const options = {
 
 const BASE_URL = "http://localhost:3000";
 const INVENTORY_URL = "http://localhost:3001";
-const MONITORING_URL = "http://localhost:9090"; // Prometheus endpoint
+const MONITORING_URL = "http://localhost:9090";
 const HEADERS = {
   "Content-Type": "application/json",
   Accept: "application/json",
@@ -119,7 +115,6 @@ const HEADERS = {
 
 const PRODUCTS = ["product-1", "product-2", "product-3"];
 
-// Helper to get test payload with more variance
 function getTestPayload() {
   return JSON.stringify({
     productId: PRODUCTS[Math.floor(Math.random() * PRODUCTS.length)],
@@ -127,14 +122,12 @@ function getTestPayload() {
   });
 }
 
-// Helper to check inventory status directly
 function checkInventoryDirect(productId) {
   return http.get(`${INVENTORY_URL}/inventory/check/${productId}`, {
     headers: HEADERS,
   });
 }
 
-// Helper to get system metrics from Prometheus (if available)
 function getSystemMetrics(serviceName) {
   try {
     const cpuResponse = http.get(
@@ -250,7 +243,6 @@ function waitForOrderStatus(orderId, expectedStatus, maxDuration = 5000) {
   }
 }
 
-// Helper to verify inventory consistency after order with retries
 function verifyInventoryConsistency(
   productId,
   orderedQuantity,
@@ -285,44 +277,36 @@ export function syncPerformanceTest() {
   const startTime = new Date();
   const payload = getTestPayload();
 
-  // Record system metrics before request
   const preMetrics = getSystemMetrics("order-service");
 
-  // Send order with synchronous inventory update
   const response = http.post(`${BASE_URL}/orders/sync`, payload, {
     headers: HEADERS,
     timeout: "10s",
     tags: { name: "sync_order_create" },
   });
 
-  // Calculate and add latency
   const latency = response.timings.duration;
   syncLatencyTrend.add(latency);
 
-  // Record p95 latency for this batch (simulation)
   if (latency > syncP95Latency.value) {
     syncP95Latency.add(latency);
   }
 
-  // Record success/failure
   const success = response.status === 200 || response.status === 201;
   syncErrors.add(!success);
 
   if (success) {
     successfulSyncRequests.add(1);
 
-    // Calculate and record throughput (requests per second)
     const elapsedTimeInSeconds = (new Date() - startTime) / 1000;
     if (elapsedTimeInSeconds > 0) {
       syncThroughput.add(1 / elapsedTimeInSeconds);
     }
 
-    // Record system metrics after request
     const postMetrics = getSystemMetrics("order-service");
     syncCpuUsage.add(postMetrics.cpu - preMetrics.cpu);
     syncMemoryUsage.add(postMetrics.memory);
 
-    // Verify the response
     check(response, {
       "sync response status is 2xx": (r) => r.status >= 200 && r.status < 300,
       "sync response has order data": (r) => {
@@ -342,25 +326,22 @@ export function syncPerformanceTest() {
   }
 
   // Add a small sleep to avoid overwhelming the system
-  sleep(Math.random() * 0.3 + 0.1); // Variable sleep 0.1-0.4s
+  sleep(Math.random() * 0.3 + 0.1);
 }
 
 // 1.1 Latency/Performance Testing - Asynchronous approach
 export function asyncPerformanceTest() {
   const payload = getTestPayload();
 
-  // Record system metrics before request
   const preMetrics = getSystemMetrics("order-service");
 
   try {
-    // Make the async order request
     const response = http.post(`${BASE_URL}/orders/async-direct`, payload, {
       headers: HEADERS,
       timeout: "15s",
       tags: { name: "async_order_create" },
     });
 
-    // Record initial response latency
     asyncLatencyTrend.add(response.timings.duration);
 
     const success = response.status === 200 || response.status === 201;
@@ -378,15 +359,12 @@ export function asyncPerformanceTest() {
         if (statusResult.success) {
           successfulAsyncRequests.add(1);
 
-          // Record system metrics after processing
           const postMetrics = getSystemMetrics("order-service");
           asyncCpuUsage.add(postMetrics.cpu - preMetrics.cpu);
           asyncMemoryUsage.add(postMetrics.memory);
 
-          // Record E2E latency
           asyncE2ELatency.add(statusResult.time);
 
-          // Calculate and record throughput
           const elapsedTimeInSeconds = statusResult.time / 1000;
           if (elapsedTimeInSeconds > 0) {
             asyncThroughput.add(1 / elapsedTimeInSeconds);
@@ -418,7 +396,6 @@ export function asyncPerformanceTest() {
 
 // 1.2 Data Consistency Testing - Synchronous approach
 export function syncConsistencyTest() {
-  // Get product and check initial inventory level
   const productId = PRODUCTS[Math.floor(Math.random() * PRODUCTS.length)];
   const initialCheck = checkInventoryDirect(productId);
 
@@ -431,13 +408,10 @@ export function syncConsistencyTest() {
     const initialInventory = JSON.parse(initialCheck.body);
     const orderQuantity = Math.floor(Math.random() * 3) + 1;
 
-    // Skip if not enough inventory
     if (initialInventory.quantity < orderQuantity) {
-      // Not a failure, just skip this test iteration
       return;
     }
 
-    // Create an order that will update inventory synchronously
     const payload = JSON.stringify({
       productId: productId,
       quantity: orderQuantity,
@@ -455,18 +429,15 @@ export function syncConsistencyTest() {
       return;
     }
 
-    // Immediately check inventory to verify it was updated
     const verifyResult = verifyInventoryConsistency(
       productId,
       orderQuantity,
       initialInventory.quantity,
-      3 // Allow up to 3 attempts
+      3
     );
 
-    // Record consistency rate
     syncConsistencyRate.add(verifyResult.consistent);
 
-    // Record end-to-end processing time
     const totalTime = new Date() - startTime;
     syncLatencyTrend.add(totalTime);
 
@@ -487,7 +458,6 @@ export function syncConsistencyTest() {
 // 1.2 Data Consistency Testing - Asynchronous approach
 export function asyncConsistencyTest() {
   try {
-    // Get product and check initial inventory level
     const productId = PRODUCTS[Math.floor(Math.random() * PRODUCTS.length)];
     const initialCheck = checkInventoryDirect(productId);
 
@@ -499,13 +469,10 @@ export function asyncConsistencyTest() {
     const initialInventory = JSON.parse(initialCheck.body);
     const orderQuantity = Math.floor(Math.random() * 3) + 1;
 
-    // Skip if not enough inventory
     if (initialInventory.quantity < orderQuantity) {
-      // Not a failure, just skip this test iteration
       return;
     }
 
-    // Create an order that will update inventory asynchronously
     const payload = JSON.stringify({
       productId: productId,
       quantity: orderQuantity,

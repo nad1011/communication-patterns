@@ -5,96 +5,174 @@ services:
     build:
       context: ..
       dockerfile: apps/order-service/Dockerfile
+    container_name: order-service
     ports:
       - "3000:3000"
     environment:
       - NODE_ENV=development
-      - DATABASE_HOST=postgres
+      - DATABASE_HOST=host.docker.internal
       - DATABASE_PORT=5432
-      - DATABASE_USER=postgres
-      - DATABASE_PASSWORD=postgres
-      - DATABASE_NAME=microservices
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-      - KAFKA_BROKERS=kafka:9092
+      - DATABASE_USERNAME=postgres
+      - DATABASE_PASSWORD=10112003
+      - DATABASE_NAME=order_service
+      - RABBITMQ_URL=amqp://guest:guest@host.docker.internal:5672
+      - KAFKA_BROKERS=192.168.7.112:9092
       - INVENTORY_HOST=inventory-service
       - INVENTORY_PORT=3001
-    depends_on:
-      - postgres
-      - rabbitmq
-      - kafka
+      - PAYMENT_HOST=payment-service
+      - PAYMENT_PORT=3002
+      - EMAIL_HOST=email-service
+      - EMAIL_PORT=3003
+      - NOTIFICATION_HOST=notification-service
+      - NOTIFICATION_PORT=3004
+      - ANALYTICS_HOST=analytics-service
+      - ANALYTICS_PORT=3002
     networks:
       - microservices-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   inventory-service:
     build:
       context: ..
       dockerfile: apps/inventory-service/Dockerfile
+    container_name: inventory-service
     ports:
       - "3001:3001"
     environment:
       - NODE_ENV=development
-      - DATABASE_HOST=postgres
+      - DATABASE_HOST=host.docker.internal
       - DATABASE_PORT=5432
-      - DATABASE_USER=postgres
-      - DATABASE_PASSWORD=postgres
-      - DATABASE_NAME=microservices
-      - RABBITMQ_HOST=rabbitmq
-      - RABBITMQ_PORT=5672
-    depends_on:
-      - postgres
-      - rabbitmq
+      - DATABASE_USERNAME=postgres
+      - DATABASE_PASSWORD=10112003
+      - DATABASE_NAME=inventory_service
+      - RABBITMQ_URL=amqp://guest:guest@host.docker.internal:5672
     networks:
       - microservices-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-  postgres:
-    image: postgres:14-alpine
+  payment-service:
+    build:
+      context: ..
+      dockerfile: apps/payment-service/Dockerfile
+    container_name: payment-service
     ports:
-      - "5432:5432"
+      - "3002:3002"
     environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=microservices
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - NODE_ENV=development
+      - DATABASE_HOST=host.docker.internal
+      - DATABASE_PORT=5432
+      - DATABASE_USERNAME=postgres
+      - DATABASE_PASSWORD=10112003
+      - DATABASE_NAME=payment_service
+      - RABBITMQ_URL=amqp://guest:guest@host.docker.internal:5672
+      - KAFKA_BROKERS=192.168.7.112:9092
     networks:
       - microservices-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-  rabbitmq:
-    image: rabbitmq:3-management-alpine
+  email-service:
+    build:
+      context: ..
+      dockerfile: apps/email-service/Dockerfile
+    container_name: email-service
     ports:
-      - "5672:5672"
-      - "15672:15672"
-    networks:
-      - microservices-network
-
-  kafka:
-    image: bitnami/kafka:latest
-    ports:
-      - "9092:9092"
+      - "3003:3003"
     environment:
-      - KAFKA_CFG_NODE_ID=0
-      - KAFKA_CFG_PROCESS_ROLES=controller,broker
-      - KAFKA_CFG_LISTENERS=PLAINTEXT://:9092,CONTROLLER://:9093
-      - KAFKA_CFG_LISTENER_SECURITY_PROTOCOL_MAP=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
-      - KAFKA_CFG_CONTROLLER_QUORUM_VOTERS=0@kafka:9093
-      - KAFKA_CFG_CONTROLLER_LISTENER_NAMES=CONTROLLER
-      - ALLOW_PLAINTEXT_LISTENER=yes
+      - NODE_ENV=development
+      - DATABASE_HOST=host.docker.internal
+      - DATABASE_PORT=5432
+      - DATABASE_USERNAME=postgres
+      - DATABASE_PASSWORD=10112003
+      - KAFKA_BROKERS=192.168.7.112:9092
     networks:
       - microservices-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
-  zookeeper:
-    image: bitnami/zookeeper:latest
+  notification-service:
+    build:
+      context: ..
+      dockerfile: apps/notification-service/Dockerfile
+    container_name: notification-service
     ports:
-      - "2181:2181"
+      - "3004:3004"
     environment:
-      - ALLOW_ANONYMOUS_LOGIN=yes
+      - NODE_ENV=development
+      - DATABASE_HOST=host.docker.internal
+      - DATABASE_PORT=5432
+      - DATABASE_USERNAME=postgres
+      - DATABASE_PASSWORD=10112003
+      - KAFKA_BROKERS=192.168.7.112:9092
     networks:
       - microservices-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  analytics-service:
+    build:
+      context: ..
+      dockerfile: apps/analytics-service/Dockerfile
+    container_name: analytics-service
+    ports:
+      - "3005:3002"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_HOST=host.docker.internal
+      - DATABASE_PORT=5432
+      - DATABASE_USERNAME=postgres
+      - DATABASE_PASSWORD=10112003
+      - RABBITMQ_URL=amqp://guest:guest@host.docker.internal:5672
+      - KAFKA_BROKERS=192.168.7.112:9092
+    networks:
+      - microservices-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  activity-service:
+    build:
+      context: ..
+      dockerfile: apps/activity-service/Dockerfile
+    container_name: activity-service
+    ports:
+      - "3006:3005"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_HOST=host.docker.internal
+      - DATABASE_PORT=5432
+      - DATABASE_USERNAME=postgres
+      - DATABASE_PASSWORD=10112003
+      - DATABASE_NAME='payment_service'
+      - RABBITMQ_URL=amqp://guest:guest@host.docker.internal:5672
+      - KAFKA_BROKERS=192.168.7.112:9092
+    networks:
+      - microservices-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  fraud-service:
+    build:
+      context: ..
+      dockerfile: apps/fraud-service/Dockerfile
+    container_name: fraud-service
+    ports:
+      - "3007:3006"
+    environment:
+      - NODE_ENV=development
+      - DATABASE_HOST=host.docker.internal
+      - DATABASE_PORT=5432
+      - DATABASE_USERNAME=postgres
+      - DATABASE_PASSWORD=10112003
+      - DATABASE_NAME='payment_service'
+      - RABBITMQ_URL=amqp://guest:guest@host.docker.internal:5672
+      - KAFKA_BROKERS=192.168.7.112:9092
+    networks:
+      - microservices-network
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 networks:
   microservices-network:
     driver: bridge
-
-volumes:
-  postgres-data:

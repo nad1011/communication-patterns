@@ -2,13 +2,15 @@ import http from "k6/http";
 import { check, sleep } from "k6";
 import { Rate, Trend, Counter } from "k6/metrics";
 
-// Configuration
 const BASE_URL = "http://localhost:3000";
-const MONITORING_URL = "http://localhost:9090"; // Prometheus URL
+const MONITORING_URL = "http://localhost:9090";
 const HEADERS = {
   "Content-Type": "application/json",
   Accept: "application/json",
 };
+
+// For long processing times tests, need to change the mock payment service
+// to simulate long processing times.
 
 // Metrics for Synchronous Payment
 const syncPaymentLatency = new Trend("sync_payment_latency");
@@ -41,62 +43,61 @@ const asyncLongLatency = new Trend("async_long_latency");
 const asyncInitialLatency = new Trend("async_initial_latency");
 const asyncQueueSize = new Trend("async_queue_size");
 
-// Test configuration
 export const options = {
   scenarios: {
-    // sync_payment_test: {
-    //   executor: "ramping-arrival-rate",
-    //   startRate: 5,
-    //   timeUnit: '1s',
-    //   preAllocatedVUs: 10,
-    //   maxVUs: 50,
-    //   stages: [
-    //     { duration: '30s', target: 10 },
-    //     { duration: '30s', target: 20 },
-    //     { duration: '30s', target: 30 },
-    //     { duration: '30s', target: 0 },
-    //   ],
-    //   exec: "syncPaymentTest",
-    // },
+    sync_payment_test: {
+      executor: "ramping-arrival-rate",
+      startRate: 5,
+      timeUnit: '1s',
+      preAllocatedVUs: 10,
+      maxVUs: 50,
+      stages: [
+        { duration: '30s', target: 10 },
+        { duration: '30s', target: 20 },
+        { duration: '30s', target: 30 },
+        { duration: '30s', target: 0 },
+      ],
+      exec: "syncPaymentTest",
+    },
 
-    // async_payment_test: {
-    //   executor: "ramping-arrival-rate",
-    //   startRate: 5,
-    //   timeUnit: '1s',
-    //   preAllocatedVUs: 20,
-    //   maxVUs: 100,
-    //   stages: [
-    //     { duration: '30s', target: 10 },
-    //     { duration: '30s', target: 20 },
-    //     { duration: '30s', target: 50 },
-    //     { duration: '30s', target: 0 },
-    //   ],
-    //   exec: "asyncPaymentTest",
-    //   startTime: '2m30s',
-    // },
+    async_payment_test: {
+      executor: "ramping-arrival-rate",
+      startRate: 5,
+      timeUnit: '1s',
+      preAllocatedVUs: 20,
+      maxVUs: 100,
+      stages: [
+        { duration: '30s', target: 10 },
+        { duration: '30s', target: 20 },
+        { duration: '30s', target: 50 },
+        { duration: '30s', target: 0 },
+      ],
+      exec: "asyncPaymentTest",
+      startTime: '2m30s',
+    },
 
     sync_long_processing: {
       executor: "ramping-vus",
       startVUs: 5,
       stages: [
-        { duration: "20s", target: 10 }, // Tăng dần lên 10 VUs trong 20s
-        { duration: "1m", target: 10 }, // Giữ ổn định 10 VUs trong 1 phút
-        { duration: "20s", target: 0 }, // Kết thúc
+        { duration: "20s", target: 10 },
+        { duration: "1m", target: 10 },
+        { duration: "20s", target: 0 },
       ],
       exec: "testSyncLongProcessing",
-      // startTime: '5m',
+      startTime: '5m',
     },
 
     async_long_processing: {
       executor: "ramping-vus",
       startVUs: 5,
       stages: [
-        { duration: "20s", target: 10 }, // Tăng dần lên 10 VUs trong 20s
-        { duration: "1m", target: 10 }, // Giữ ổn định 10 VUs trong 1 phút
-        { duration: "20s", target: 0 }, // Kết thúc
+        { duration: "20s", target: 10 },
+        { duration: "1m", target: 10 },
+        { duration: "20s", target: 0 },
       ],
       exec: "testAsyncLongProcessing",
-      startTime: "2m30s", // Bắt đầu sau khi test đồng bộ hoàn thành
+      startTime: "7m30s",
     },
   },
   thresholds: {
@@ -146,9 +147,7 @@ function createPaymentPayload(orderId) {
   });
 }
 
-// Get system metrics
 function getServiceMetrics(serviceName) {
-  // Giữ nguyên hàm này
   try {
     const cpuResponse = http.get(
       `${MONITORING_URL}/api/v1/query?query=process_cpu_seconds_total{service="${serviceName}"}`,
@@ -169,7 +168,7 @@ function getServiceMetrics(serviceName) {
           cpu: parseFloat(cpuData?.data?.result[0]?.value[1] || 0),
           memory:
             parseFloat(memoryData?.data?.result[0]?.value[1] || 0) /
-            (1024 * 1024), // Convert to MB
+            (1024 * 1024),
         };
       } catch (e) {
         console.log(`Error parsing metrics: ${e}`);
@@ -365,17 +364,15 @@ export function syncPaymentTest() {
     }
   }
 
-  sleep(Math.random() * 0.5 + 0.2); // 0.2-0.7s think time
+  sleep(Math.random() * 0.5 + 0.2);
 }
 
 // Asynchronous Payment Test
 export function asyncPaymentTest() {
   const startTime = new Date();
 
-  // Collect service metrics before request
   const preMetrics = getServiceMetrics("payment-service");
 
-  // Create order first
   const orderResponse = http.post(
     `${BASE_URL}/orders/sync`,
     createOrderPayload(),
@@ -399,7 +396,6 @@ export function asyncPaymentTest() {
     return;
   }
 
-  // Process payment asynchronously
   const paymentResponse = http.post(
     `${BASE_URL}/orders/payment/async`,
     createPaymentPayload(order.id),
@@ -409,26 +405,21 @@ export function asyncPaymentTest() {
   const initialResponseTime = (new Date() - startTime) / 1000;
   asyncPaymentThroughput.add(1 / initialResponseTime);
 
-  // Record initial response latency
   const initialLatency = paymentResponse.timings.duration;
   asyncPaymentLatency.add(initialLatency);
 
-  // Record success/failure of initial request
   const success =
     paymentResponse.status === 200 || paymentResponse.status === 201;
 
   if (success) {
-    // Wait for payment to complete
     const statusResult = waitForPaymentStatus(order.id);
 
     if (statusResult.success) {
       successfulAsyncPayments.add(1);
       asyncPaymentErrors.add(0);
 
-      // Record E2E latency
       asyncPaymentE2ELatency.add(statusResult.time);
 
-      // Get post-request metrics
       const postMetrics = getServiceMetrics("payment-service");
       asyncPaymentCpu.add(postMetrics.cpu - preMetrics.cpu);
       asyncPaymentMemory.add(postMetrics.memory);
@@ -447,18 +438,15 @@ export function asyncPaymentTest() {
     );
   }
 
-  // Verify results
   check(paymentResponse, {
     "Async payment request successful": (r) =>
       r.status === 200 || r.status === 201,
   });
 
-  // Variable sleep to simulate user think time
-  sleep(Math.random() * 0.5 + 0.2); // 0.2-0.7s think time
+  sleep(Math.random() * 0.5 + 0.2);
 }
 
 export function testSyncLongProcessing() {
-  // Tạo đơn hàng
   const orderResponse = http.post(
     `${BASE_URL}/orders/sync`,
     createOrderPayload(),
@@ -483,25 +471,21 @@ export function testSyncLongProcessing() {
     return;
   }
 
-  // Đo thread pool trước khi gọi - kiểm tra lại query
   let threadPoolBefore = getEventLoopLag();
 
-  // Thực hiện thanh toán đồng bộ và đo thời gian
   const startTime = new Date();
   const response = http.post(
     `${BASE_URL}/orders/payment/sync`,
     createPaymentPayload(order.id),
     {
       headers: HEADERS,
-      timeout: "15s", // Tăng timeout để đảm bảo bắt được các timeout thật
+      timeout: "15s",
     }
   );
   const latency = new Date() - startTime;
 
-  // Đo thread pool sau khi gọi
   let threadPoolAfter = getEventLoopLag();
 
-  // Ghi nhận metrics
   syncLongLatency.add(latency);
   syncThreadSaturation.add(threadPoolAfter - threadPoolBefore);
 
@@ -514,7 +498,6 @@ export function testSyncLongProcessing() {
     syncTimeoutRate.add(0);
   }
 
-  // Kiểm tra kết quả
   check(response, {
     "Sync payment request completed": (r) =>
       r.status === 200 || r.status === 201,
@@ -535,13 +518,10 @@ export function testSyncLongProcessing() {
   sleep(Math.random() * 0.5 + 0.5);
 }
 
-// Test thanh toán bất đồng bộ thời gian dài
 export function testAsyncLongProcessing() {
-  // Tạo nhiều đơn hàng và yêu cầu thanh toán cùng lúc
   const orders = [];
   const startBatch = new Date();
 
-  // Tạo 5 order và gửi payment request
   for (let i = 0; i < 5; i++) {
     const orderResponse = http.post(
       `${BASE_URL}/orders/sync`,
@@ -553,7 +533,6 @@ export function testAsyncLongProcessing() {
         const order = JSON.parse(orderResponse.body);
         orders.push(order);
 
-        // Gửi payment request
         http.post(
           `${BASE_URL}/orders/payment/async`,
           createPaymentPayload(order.id),
@@ -565,26 +544,22 @@ export function testAsyncLongProcessing() {
     }
   }
 
-  // Đo queue size ngay sau khi gửi hàng loạt request
-  sleep(0.2); // Chờ một chút để message được đưa vào queue
+  sleep(0.2); // wait for a short time before checking the queue size
   const queueSizeAfterBatch = getQueueSize("payment_queue");
   console.log(`Queue size after sending batch: ${queueSizeAfterBatch}`);
 
-  // Theo dõi tiến độ hoàn thành của các payment
   const completionTimes = [];
-  const maxWaitTime = 20000; // 20 seconds
+  const maxWaitTime = 20000;
   const startWaiting = new Date();
 
-  // Đợi cho đến khi tất cả payment hoàn thành hoặc timeout
   while (
     completionTimes.length < orders.length &&
     new Date() - startWaiting < maxWaitTime
   ) {
     for (let i = 0; i < orders.length; i++) {
-      // Nếu order này đã được kiểm tra hoàn thành, bỏ qua
       if (completionTimes[i]) continue;
 
-      const result = waitForPaymentStatus(orders[i].id, "paid", 1000); // Polling mỗi 1 giây
+      const result = waitForPaymentStatus(orders[i].id, "paid", 1000);
       if (result.success || result.status === "payment_failed") {
         completionTimes[i] = new Date() - startBatch;
         console.log(
@@ -592,10 +567,9 @@ export function testAsyncLongProcessing() {
         );
       }
     }
-    sleep(0.1); // Nghỉ ngắn giữa các lần kiểm tra
+    sleep(0.1);
   }
 
-  // Tính toán số liệu thống kê về thời gian hoàn thành
   if (completionTimes.length > 0) {
     const avgCompletionTime =
       completionTimes.reduce((sum, time) => sum + time, 0) /
@@ -607,7 +581,6 @@ export function testAsyncLongProcessing() {
       `Completion statistics - Avg: ${avgCompletionTime}ms, Min: ${minCompletionTime}ms, Max: ${maxCompletionTime}ms`
     );
 
-    // Ước tính queue depth dựa trên phân phối thời gian hoàn thành
     const estimatedQueueDepth = Math.max(
       1,
       Math.round((maxCompletionTime - minCompletionTime) / 3000)
@@ -617,7 +590,7 @@ export function testAsyncLongProcessing() {
     // Ghi nhận metrics
     asyncQueueSize.add(Math.max(queueSizeAfterBatch, estimatedQueueDepth));
     asyncLongLatency.add(avgCompletionTime);
-    asyncInitialLatency.add(0); // Đã có giá trị từ các test trước
+    asyncInitialLatency.add(0);
   }
 }
 
@@ -639,27 +612,6 @@ function getEventLoopLag() {
   }
 }
 
-// function getQueueSize(queueName) {
-//   try {
-//     const queueMetrics = http.get(
-//       `${MONITORING_URL}/api/v1/query?query=rabbitmq_queue_messages_ready{queue="${queueName}"}`,
-//       { headers: { Accept: "application/json" } }
-//     );
-
-//     if (queueMetrics.status === 200) {
-//       const metricsData = JSON.parse(queueMetrics.body);
-//       const value = parseFloat(metricsData?.data?.result[0]?.value[1] || 0);
-//       console.log(`Queue size for ${queueName}: ${value}`);
-//       return value;
-//     }
-
-//     return Math.floor(Math.random() * 5) + 1;
-//   } catch (error) {
-//     console.error(`Error fetching queue size: ${error}`);
-//     return 1;
-//   }
-// }
-
 function getQueueSize(queueName) {
   try {
     const rmqApiResponse = http.get(
@@ -667,8 +619,6 @@ function getQueueSize(queueName) {
       {
         headers: {
           Accept: "application/json",
-          // Basic auth với guest:guest (default credentials)
-          // Đã encode sẵn thay vì dùng encoding module
           Authorization: "Basic Z3Vlc3Q6Z3Vlc3Q=",
         },
       }
@@ -689,259 +639,19 @@ function getQueueSize(queueName) {
       console.log(`RabbitMQ API returned status: ${rmqApiResponse.status}`);
     }
 
-    // Nếu Management API không hoạt động, sử dụng giá trị mô phỏng dựa trên thời gian xử lý
     const asyncLatency = asyncLongLatency.values.avg || 3500;
     const simulatedQueueSize = Math.max(1, Math.ceil(asyncLatency / 1000));
     console.log(`Using simulated queue size: ${simulatedQueueSize}`);
     return simulatedQueueSize;
   } catch (error) {
     console.error(`Error fetching queue size: ${error}`);
-    return 1; // Giá trị mặc định nếu có lỗi
+    return 1;
   }
 }
 
-// Generate summary report
-// export function handleSummary(data) {
-//   // Cải thiện định dạng báo cáo để dễ đọc và rõ ràng hơn
-//   const report = {
-//     title: "Order-Payment Testing Results",
-//     timestamp: new Date().toISOString(),
-//     testDuration: data.state.testRunDuration,
-//     summary: "Comparison between Synchronous and Asynchronous Payment Processing",
+export function handleSummary(data) {
+  return {
+    "order_payment_test_summary.json": JSON.stringify(data),
+  };
+}
 
-//     latencyComparison: {
-//       sync: {
-//         avg: data.metrics.sync_payment_latency.values.avg.toFixed(2) + " ms",
-//         p90: data.metrics.sync_payment_latency.values["p(90)"].toFixed(2) + " ms",
-//         p95: data.metrics.sync_payment_latency.values["p(95)"].toFixed(2) + " ms",
-//         p99: data.metrics.sync_payment_latency.values["p(99)"].toFixed(2) + " ms",
-//         min: data.metrics.sync_payment_latency.values.min.toFixed(2) + " ms",
-//         max: data.metrics.sync_payment_latency.values.max.toFixed(2) + " ms",
-//       },
-//       async: {
-//         initialResponseAvg: data.metrics.async_payment_initial_latency.values.avg.toFixed(2) + " ms",
-//         initialResponseP95: data.metrics.async_payment_initial_latency.values["p(95)"].toFixed(2) + " ms",
-//         e2eAvg: data.metrics.async_payment_e2e_latency.values.avg.toFixed(2) + " ms",
-//         e2eP95: data.metrics.async_payment_e2e_latency.values["p(95)"].toFixed(2) + " ms",
-//       },
-//     },
-
-//     throughputComparison: {
-//       sync: data.metrics.sync_payment_throughput.values.avg.toFixed(2) + " req/s",
-//       async: data.metrics.async_payment_throughput.values.avg.toFixed(2) + " req/s",
-//       comparisonRatio: (data.metrics.async_payment_throughput.values.avg /
-//                         data.metrics.sync_payment_throughput.values.avg).toFixed(2) + "x"
-//     },
-
-//     errorRates: {
-//       sync: (data.metrics.sync_payment_errors.values.rate * 100).toFixed(2) + "%",
-//       async: (data.metrics.async_payment_errors.values.rate * 100).toFixed(2) + "%",
-//     },
-
-//     successCounts: {
-//       syncSuccessful: data.metrics.successful_sync_payments.values.count,
-//       syncFailed: data.metrics.failed_sync_payments.values.count,
-//       syncSuccessRate: ((data.metrics.successful_sync_payments.values.count /
-//                         (data.metrics.successful_sync_payments.values.count +
-//                          data.metrics.failed_sync_payments.values.count)) * 100).toFixed(2) + "%",
-
-//       asyncSuccessful: data.metrics.successful_async_payments.values.count,
-//       asyncFailed: data.metrics.failed_async_payments.values.count,
-//       asyncSuccessRate: ((data.metrics.successful_async_payments.values.count /
-//                          (data.metrics.successful_async_payments.values.count +
-//                           data.metrics.failed_async_payments.values.count)) * 100).toFixed(2) + "%",
-//     },
-
-//     resourceUtilization: {
-//       syncPaymentCpu: data.metrics.sync_payment_cpu.values.avg,
-//       syncPaymentMemory: data.metrics.sync_payment_memory.values.avg + " MB",
-//       asyncPaymentCpu: data.metrics.async_payment_cpu.values.avg,
-//       asyncPaymentMemory: data.metrics.async_payment_memory.values.avg + " MB",
-//     },
-
-//     analysis: {
-//       userExperience: {
-//         winner: data.metrics.async_payment_initial_latency.values.avg <
-//                 data.metrics.sync_payment_latency.values.avg
-//                 ? "Asynchronous payment" : "Synchronous payment",
-//         reason: "Based on initial response time to user"
-//       },
-//       throughputEfficiency: {
-//         winner: data.metrics.async_payment_throughput.values.avg >
-//                 data.metrics.sync_payment_throughput.values.avg
-//                 ? "Asynchronous payment" : "Synchronous payment",
-//         reason: "Based on number of payments processed per second"
-//       },
-//       reliability: {
-//         winner: data.metrics.sync_payment_errors.values.rate
-//                 data.metrics.async_payment_errors.values.rate
-//                 ? "Synchronous payment" : "Asynchronous payment",
-//         reason: "Based on error rate during processing"
-//       },
-//       scalability: {
-//         winner: "Asynchronous payment",
-//         reason: "Better performance under high load conditions"
-//       },
-//       overallRecommendation:
-//         data.metrics.async_payment_initial_latency.values.avg < 200 &&
-//         data.metrics.async_payment_throughput.values.avg >
-//         data.metrics.sync_payment_throughput.values.avg
-//         ? "Use asynchronous payments for better scalability and user experience"
-//         : data.metrics.sync_payment_errors.values.rate < 0.05 &&
-//           data.metrics.async_payment_errors.values.rate < 0.05
-//           ? data.metrics.sync_payment_latency.values.avg
-//             data.metrics.async_payment_e2e_latency.values.avg
-//             ? "Use synchronous payments for simple, low-volume payment processing"
-//             : "Use asynchronous payments for high-volume payment processing"
-//           : "Focus on improving reliability before making architectural decisions",
-//     },
-//   };
-
-//   return {
-//     "summary.json": JSON.stringify(data),
-//     "order-payment-testing-report.json": JSON.stringify(report, null, 2),
-//     "order-payment-testing-report.html": generateHtmlReport(report),
-//   };
-// }
-
-// function generateHtmlReport(data) {
-//   return `
-//   <!DOCTYPE html>
-//   <html lang="en">
-//   <head>
-//     <meta charset="UTF-8">
-//     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-//     <title>Payment Processing Comparison</title>
-//     <style>
-//       body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; padding: 20px; }
-//       h1, h2, h3 { color: #0066cc; }
-//       .container { margin-bottom: 30px; }
-//       table { border-collapse: collapse; width: 100%; margin-bottom: 20px; }
-//       th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-//       th { background-color: #f2f2f2; }
-//       .highlight { font-weight: bold; color: #0066cc; }
-//       .winner { background-color: #d4edda; }
-//       .comparison { display: flex; gap: 20px; }
-//       .card { flex: 1; border: 1px solid #ddd; border-radius: 8px; padding: 20px; }
-//       .card h3 { margin-top: 0; }
-//       .conclusion { background-color: #f8f9fa; border-left: 5px solid #0066cc; padding: 15px; }
-//     </style>
-//   </head>
-//   <body>
-//     <h1>${data.title}</h1>
-//     <p><strong>Test conducted:</strong> ${data.timestamp}</p>
-//     <p><strong>Test duration:</strong> ${data.testDuration}ms</p>
-
-//     <div class="container">
-//       <h2>Latency Comparison</h2>
-//       <div class="comparison">
-//         <div class="card">
-//           <h3>Synchronous Payment</h3>
-//           <table>
-//             <tr><th>Metric</th><th>Value</th></tr>
-//             <tr><td>Average Response Time</td><td>${data.latencyComparison.sync.avg}</td></tr>
-//             <tr><td>95th Percentile</td><td>${data.latencyComparison.sync.p95}</td></tr>
-//             <tr><td>99th Percentile</td><td>${data.latencyComparison.sync.p99}</td></tr>
-//             <tr><td>Min</td><td>${data.latencyComparison.sync.min}</td></tr>
-//             <tr><td>Max</td><td>${data.latencyComparison.sync.max}</td></tr>
-//           </table>
-//         </div>
-//         <div class="card">
-//           <h3>Asynchronous Payment</h3>
-//           <table>
-//             <tr><th>Metric</th><th>Value</th></tr>
-//             <tr><td>Initial Response Avg</td><td class="highlight">${data.latencyComparison.async.initialResponseAvg}</td></tr>
-//             <tr><td>Initial Response 95th</td><td>${data.latencyComparison.async.initialResponseP95}</td></tr>
-//             <tr><td>End-to-End Avg</td><td>${data.latencyComparison.async.e2eAvg}</td></tr>
-//             <tr><td>End-to-End 95th</td><td>${data.latencyComparison.async.e2eP95}</td></tr>
-//           </table>
-//         </div>
-//       </div>
-//     </div>
-
-//     <div class="container">
-//       <h2>Throughput Comparison</h2>
-//       <table>
-//         <tr>
-//           <th>Synchronous</th>
-//           <th>Asynchronous</th>
-//           <th>Comparison Ratio</th>
-//         </tr>
-//         <tr>
-//           <td>${data.throughputComparison.sync}</td>
-//           <td>${data.throughputComparison.async}</td>
-//           <td class="highlight">${data.throughputComparison.comparisonRatio}</td>
-//         </tr>
-//       </table>
-//     </div>
-
-//     <div class="container">
-//       <h2>Success & Error Rates</h2>
-//       <table>
-//         <tr>
-//           <th>Metric</th>
-//           <th>Synchronous</th>
-//           <th>Asynchronous</th>
-//         </tr>
-//         <tr>
-//           <td>Successful Requests</td>
-//           <td>${data.successCounts.syncSuccessful}</td>
-//           <td>${data.successCounts.asyncSuccessful}</td>
-//         </tr>
-//         <tr>
-//           <td>Failed Requests</td>
-//           <td>${data.successCounts.syncFailed}</td>
-//           <td>${data.successCounts.asyncFailed}</td>
-//         </tr>
-//         <tr>
-//           <td>Success Rate</td>
-//           <td>${data.successCounts.syncSuccessRate}</td>
-//           <td>${data.successCounts.asyncSuccessRate}</td>
-//         </tr>
-//         <tr>
-//           <td>Error Rate</td>
-//           <td>${data.errorRates.sync}</td>
-//           <td>${data.errorRates.async}</td>
-//         </tr>
-//       </table>
-//     </div>
-
-//     <div class="container">
-//       <h2>Analysis</h2>
-//       <table>
-//         <tr>
-//           <th>Category</th>
-//           <th>Winner</th>
-//           <th>Reason</th>
-//         </tr>
-//         <tr class="${data.analysis.userExperience.winner === 'Asynchronous payment' ? 'winner' : ''}">
-//           <td>User Experience</td>
-//           <td>${data.analysis.userExperience.winner}</td>
-//           <td>${data.analysis.userExperience.reason}</td>
-//         </tr>
-//         <tr class="${data.analysis.throughputEfficiency.winner === 'Asynchronous payment' ? 'winner' : ''}">
-//           <td>Throughput Efficiency</td>
-//           <td>${data.analysis.throughputEfficiency.winner}</td>
-//           <td>${data.analysis.throughputEfficiency.reason}</td>
-//         </tr>
-//         <tr class="${data.analysis.reliability.winner === 'Asynchronous payment' ? 'winner' : ''}">
-//           <td>Reliability</td>
-//           <td>${data.analysis.reliability.winner}</td>
-//           <td>${data.analysis.reliability.reason}</td>
-//         </tr>
-//         <tr class="winner">
-//           <td>Scalability</td>
-//           <td>${data.analysis.scalability.winner}</td>
-//           <td>${data.analysis.scalability.reason}</td>
-//         </tr>
-//       </table>
-//     </div>
-
-//     <div class="conclusion">
-//       <h2>Conclusion and Recommendation</h2>
-//       <p>${data.analysis.overallRecommendation}</p>
-//     </div>
-//   </body>
-//   </html>
-//   `;
-// }

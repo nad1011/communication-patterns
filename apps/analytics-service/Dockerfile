@@ -4,7 +4,7 @@ WORKDIR /app
 
 COPY package*.json ./
 
-COPY apps/inventory-service/package*.json ./apps/inventory-service/
+COPY apps/analytics-service/package*.json ./apps/analytics-service/
 
 COPY libs/common/package*.json ./libs/common/
 
@@ -14,9 +14,8 @@ RUN npm config set registry https://registry.npmmirror.com/ && \
 
 COPY . .
 
-RUN npm run build -w apps/inventory-service
+RUN npm run build -w apps/analytics-service
 
-EXPOSE 3001
+EXPOSE 3002
 
-# Command to start service
-CMD ["node", "dist/apps/inventory-service/apps/inventory-service/src/main"]
+CMD ["node", "dist/apps/analytics-service/apps/analytics-service/src/main"]
