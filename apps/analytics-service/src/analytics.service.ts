@@ -62,7 +62,6 @@ export class AnalyticsService {
   }
 
   getStats() {
-    // Convert maps to objects for API response
     return {
       totalActivities: this.stats.totalActivities,
       activityCounts: this.stats.activityCounts,
@@ -73,8 +72,6 @@ export class AnalyticsService {
   }
 
   logActivity(data: any) {
-    this.logger.log(`Logging activity: ${JSON.stringify(data)}`);
-
     // Update total count
     this.stats.totalActivities++;
 
@@ -105,12 +102,8 @@ export class AnalyticsService {
   }
 
   processUserSearch(data: any) {
-    this.logger.log(`Processing search activity: ${JSON.stringify(data)}`);
-
-    // Extract search term from metadata (in a real app, this would be structured)
     const searchTerm = data.metadata?.term || 'unknown';
 
-    // Update search term stats
     const currentCount = this.stats.topSearchTerms.get(searchTerm) || 0;
     this.stats.topSearchTerms.set(searchTerm, currentCount + 1);
 
@@ -127,7 +120,6 @@ export class AnalyticsService {
       totalSearches: this.stats.activityCounts.search,
     };
 
-    this.logger.log(`Search processed: ${JSON.stringify(result)}`);
     return result;
   }
 }

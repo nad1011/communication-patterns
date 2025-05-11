@@ -10,19 +10,10 @@ import { ActivityController } from './activity.controller';
         name: 'FRAUD_SERVICE',
         transport: Transport.RMQ,
         options: {
-          urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+          urls: [
+            process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672',
+          ],
           queue: 'fraud_queue',
-          queueOptions: {
-            durable: true,
-          },
-        },
-      },
-      {
-        name: 'RECOMMENDATION_SERVICE',
-        transport: Transport.RMQ,
-        options: {
-          urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
-          queue: 'recommendation_queue',
           queueOptions: {
             durable: true,
           },
@@ -32,7 +23,9 @@ import { ActivityController } from './activity.controller';
         name: 'ANALYTICS_SERVICE',
         transport: Transport.RMQ,
         options: {
-          urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+          urls: [
+            process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672',
+          ],
           queue: 'analytics_queue',
           queueOptions: {
             durable: true,

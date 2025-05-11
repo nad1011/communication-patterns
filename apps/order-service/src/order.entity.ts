@@ -1,4 +1,3 @@
-// apps/order-service/src/order.entity.ts
 import {
   Entity,
   Column,

@@ -9,8 +9,6 @@ export class ActivityService {
 
   constructor(
     @Inject('FRAUD_SERVICE') private readonly fraudClient: ClientProxy,
-    @Inject('RECOMMENDATION_SERVICE')
-    private readonly recommendationClient: ClientProxy,
     @Inject('ANALYTICS_SERVICE') private readonly analyticsClient: ClientProxy,
     @Inject('KAFKA_SERVICE') private readonly kafkaClient: ClientProxy,
   ) {}
@@ -34,20 +32,12 @@ export class ActivityService {
     };
 
     try {
-      // Route to the appropriate service based on action
       if (activityDto.action === 'click') {
         await firstValueFrom(
           this.fraudClient.send('user_click', enrichedActivity),
         );
         this.logger.log(
           `Sent click event to fraud service: ${JSON.stringify(enrichedActivity)}`,
-        );
-      } else if (activityDto.action === 'view') {
-        await firstValueFrom(
-          this.recommendationClient.send('user_view', enrichedActivity),
-        );
-        this.logger.log(
-          `Sent view event to recommendation service: ${JSON.stringify(enrichedActivity)}`,
         );
       } else if (activityDto.action === 'search') {
         await firstValueFrom(

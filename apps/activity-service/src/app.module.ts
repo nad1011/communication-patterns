@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ActivityModule } from './activity.module';
 import { DatabaseModule } from '@app/common';
 import { ConfigModule } from '@nestjs/config';
+import { PrometheusModule } from '@willsoto/nestjs-prometheus';
+import { TerminusModule } from '@nestjs/terminus';
 
 @Module({
   imports: [
@@ -11,6 +13,8 @@ import { ConfigModule } from '@nestjs/config';
     }),
     DatabaseModule,
     ActivityModule,
+    PrometheusModule.register(),
+    TerminusModule,
   ],
 })
 export class AppModule {}

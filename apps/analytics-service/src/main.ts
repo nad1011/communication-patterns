@@ -21,7 +21,7 @@ async function bootstrap() {
   app.connectMicroservice<MicroserviceOptions>({
     transport: Transport.RMQ,
     options: {
-      urls: [process.env.RABBITMQ_URL || 'amqp://localhost:5672'],
+      urls: [process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672'],
       queue: 'analytics_queue',
       queueOptions: {
         durable: true,
@@ -33,7 +33,7 @@ async function bootstrap() {
   await app.startAllMicroservices();
 
   // Start HTTP service
-  await app.listen(3002);
+  await app.listen(3007);
 }
 bootstrap().catch((error) => {
   console.error('Error during bootstrap:', error);
